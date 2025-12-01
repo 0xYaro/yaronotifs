@@ -99,7 +99,7 @@ class GeminiService:
                 raise ValueError(f"File processing failed: {uploaded_file.state}")
 
             # Generate analysis using the uploaded file
-            prompt = self._build_crypto_analysis_prompt()
+            prompt = self._build_equity_analysis_prompt()
 
             response = await loop.run_in_executor(
                 None,
@@ -125,49 +125,45 @@ class GeminiService:
             logger.error(f"Gemini File API error: {e}")
             raise
 
-    def _build_crypto_analysis_prompt(self) -> str:
+    def _build_equity_analysis_prompt(self) -> str:
         """
-        Build the analysis prompt for crypto reports.
+        Build the analysis prompt for equity research reports.
 
         This prompt is designed for multimodal analysis (text + visual elements).
 
         Returns:
             str: Formatted prompt for Gemini
         """
-        return """You are a crypto intelligence analyst. Analyze this research report comprehensively, examining BOTH textual content AND visual elements (charts, graphs, tables, token unlock schedules).
+        return """# Role: Senior Market Intelligence Analyst (Buy-Side)
+**Objective:** Synthesize the attached Equity Research Report into a "Coverage Note" for the CIO.
+**Constraint:** Do not just summarize the PDF. You must **contextualize** it against the current market environment using live data.
 
-YOUR TASK:
-Extract and summarize the key information in the following format:
+---
 
-## Executive Summary
-[2-3 sentence overview of the main thesis]
+### **Part 1: The "Delta" (What Changed?)**
+* **The Trigger:** Why was this report written? (Earnings release, M&A rumor, Analyst Day, or just a maintenance update?)
+* **The Core Update:** What is the single most important new data point in this file?
+* **Consensus Check:** Does this report fundamentally change the street's view, or is it reinforcing the echo chamber?
 
-## Key Alpha Opportunities
-- [Specific trading or investment insights from text and charts]
-- [Price targets, entry points, or strategic recommendations]
-- [Insights from token unlock schedules or vesting charts]
+### **Part 2: Live Context Cross-Reference (CRITICAL)**
+* **Instruction:** Use your browser/search tools to check the following against *live* market data:
+    1.  **Price Action:** Look at the ticker's performance over the last 5 days. Did the market *already* react to this news before the report was published?
+    2.  **Sector Sentiment:** Search for "[Sector Name] ETF performance YTD" or recent news. Is this stock moving with its sector or diverging?
+    3.  **Fact Check:** If the report claims a "catalyst" is coming (e.g., "FDA approval next week"), verify if that date has shifted or passed.
+* **Output:** Explicitly state: *"Live Check: The report is bullish, BUT the stock is down 5% this week, suggesting the market disagrees."*
 
-## Catalysts & Timeline
-- [Upcoming events, releases, or developments that could move price]
-- [Expected timeframes for these catalysts]
-- [Key dates from roadmaps or timelines in charts]
+### **Part 3: Key Insights & Visuals**
+* **Visual Synthesis:** Describe the most "telling" chart in the report. What anomaly does it show?
+* **The Numbers:** Extract the revised estimates (Revenue/EPS). Are they raising or cutting guidance?
 
-## Visual Data Insights
-- [Important findings from charts, graphs, or tables]
-- [Token economics or unlock schedules]
-- [Market data or performance metrics from visual elements]
+### **Part 4: The Bottom Line (Actionability)**
+* **Verdict:** Is this "Noise" (ignore), "Maintenance" (monitor), or a "dislocation" (act now)?
+* **Lateral Watchlist:** Based on this report, which *other* tickers should we be watching? (e.g., "If their cloud growth is slowing, check if Amazon AWS is taking their share").
 
-## Risks & Considerations
-- [Key risks or counter-arguments to be aware of]
+---
 
-IMPORTANT:
-- Analyze BOTH text and visual content thoroughly
-- Pay special attention to charts, graphs, and token unlock schedules
-- Extract numerical data from both text and visual elements
-- Be concise but specific (aim for 400-600 words total)
-- Focus on actionable intelligence, not generic analysis
-- Use bullet points for clarity
-- Highlight numerical data (price targets, percentages, dates, unlock schedules)
+**Tone:** Objective, cynical, and data-first.
+**Format:** Bullet points. Maximum 300-500 words, optimized for reading as a message on Telegram
 """
 
     async def health_check(self) -> bool:

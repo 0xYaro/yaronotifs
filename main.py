@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Crypto Intelligence Aggregator & Router
+Market Intelligence Aggregator & Router
 
 Main application entry point for the Telegram intelligence bot.
 
 This bot:
-1. Monitors specific Telegram channels for crypto intelligence
+1. Monitors specific Telegram channels for market intelligence
 2. Processes messages using two pipelines:
    - Pipeline A: Chinese news translation (BWEnews, Foresight News)
-   - Pipeline B: PDF research report analysis (DTpapers)
+   - Pipeline B: PDF research report analysis (DTpapers - equities market research)
 3. Forwards processed intelligence to your main Telegram account
 
 Usage:
@@ -83,7 +83,7 @@ async def main():
     logger = setup_logger('yaronotifs', level=settings.LOG_LEVEL)
 
     logger.info("=" * 60)
-    logger.info("CRYPTO INTELLIGENCE AGGREGATOR & ROUTER")
+    logger.info("MARKET INTELLIGENCE AGGREGATOR & ROUTER")
     logger.info("=" * 60)
     logger.info("")
 
@@ -125,6 +125,20 @@ async def main():
     logger.info("")
     logger.info("Press Ctrl+C to stop")
     logger.info("")
+
+    # Send startup notification to status channel
+    await message_handler.status_reporter.report_startup(
+        monitored_channels=len(settings.ALL_CHANNELS)
+    )
+
+    # Start periodic status updates (every 4 hours)
+    async def get_metrics():
+        return message_handler.get_metrics()
+
+    await message_handler.status_reporter.start_periodic_updates(
+        metrics_callback=get_metrics,
+        interval_hours=4
+    )
 
     # Setup graceful shutdown
     shutdown_event = asyncio.Event()

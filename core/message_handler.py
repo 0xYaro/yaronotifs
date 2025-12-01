@@ -4,6 +4,7 @@ from telethon.tl.types import Message
 
 from config import settings
 from pipelines import TranslatorPipeline, AnalystPipeline
+from services import StatusReporter
 from utils import get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +46,12 @@ class MessageHandler:
         self.analyst_pipeline = AnalystPipeline(
             client=telegram_client.client,
             output_channel_id=self.output_channel_id
+        )
+
+        # Initialize status reporter
+        self.status_reporter = StatusReporter(
+            client=telegram_client.client,
+            status_destination_id=self.status_destination_id
         )
 
         # Metrics tracking
@@ -132,10 +139,22 @@ class MessageHandler:
             else:
                 logger.warning("✗ Translator pipeline failed")
                 self.metrics['errors'] += 1
+                # Report error to status channel
+                await self.status_reporter.report_error(
+                    error_type="Translator Pipeline Failure",
+                    error_message="Message processing failed in translator pipeline",
+                    context={"channel_id": message.chat_id}
+                )
 
         except Exception as e:
             logger.error(f"Error in translator pipeline: {e}", exc_info=True)
             self.metrics['errors'] += 1
+            # Report error to status channel
+            await self.status_reporter.report_error(
+                error_type="Translator Pipeline Exception",
+                error_message=str(e),
+                context={"channel_id": message.chat_id}
+            )
 
     async def _process_analyst(self, message: Message):
         """
@@ -155,10 +174,22 @@ class MessageHandler:
             else:
                 logger.warning("✗ Analyst pipeline failed")
                 self.metrics['errors'] += 1
+                # Report error to status channel
+                await self.status_reporter.report_error(
+                    error_type="Analyst Pipeline Failure",
+                    error_message="PDF processing failed in analyst pipeline",
+                    context={"channel_id": message.chat_id}
+                )
 
         except Exception as e:
             logger.error(f"Error in analyst pipeline: {e}", exc_info=True)
             self.metrics['errors'] += 1
+            # Report error to status channel
+            await self.status_reporter.report_error(
+                error_type="Analyst Pipeline Exception",
+                error_message=str(e),
+                context={"channel_id": message.chat_id}
+            )
 
     def get_metrics(self) -> Dict[str, int]:
         """

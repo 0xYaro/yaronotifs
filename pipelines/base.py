@@ -102,3 +102,52 @@ class BasePipeline(ABC):
                 return f"Channel {message.chat_id}"
         except Exception:
             return "Unknown Source"
+
+    def _get_message_link(self, message: Message) -> Optional[str]:
+        """
+        Generate a Telegram message link for the given message.
+
+        Args:
+            message: Telegram message
+
+        Returns:
+            str: Message link in format t.me/... or None if unable to generate
+        """
+        try:
+            chat = message.chat
+            message_id = message.id
+
+            # For channels/groups with username
+            if hasattr(chat, 'username') and chat.username:
+                return f"https://t.me/{chat.username}/{message_id}"
+
+            # For channels/groups without username (private, use ID)
+            # Format: t.me/c/{channel_id_without_prefix}/{message_id}
+            chat_id = str(chat.id)
+            if chat_id.startswith('-100'):
+                # Remove the -100 prefix for private channel links
+                channel_id = chat_id[4:]
+                return f"https://t.me/c/{channel_id}/{message_id}"
+
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to generate message link: {e}")
+            return None
+
+    def _format_via_source(self, message: Message) -> str:
+        """
+        Format the "via Channel_Name (link)" footer for messages.
+
+        Args:
+            message: Telegram message
+
+        Returns:
+            str: Formatted source attribution with hyperlink
+        """
+        channel_name = self._get_source_info(message)
+        message_link = self._get_message_link(message)
+
+        if message_link:
+            return f"via [{channel_name}]({message_link})"
+        else:
+            return f"via {channel_name}"

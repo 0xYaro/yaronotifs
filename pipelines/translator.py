@@ -56,9 +56,8 @@ class TranslatorPipeline(BasePipeline):
                 return await self._forward_original(message, text)
 
             # Format and forward the result
-            source = self._get_source_info(message)
             formatted_message = self._format_translation_result(
-                source=source,
+                message=message,
                 original=text,
                 translated=translated_text
             )
@@ -165,13 +164,13 @@ class TranslatorPipeline(BasePipeline):
 
         return chunks
 
-    def _format_translation_result(self, source: str, original: str,
+    def _format_translation_result(self, message: Message, original: str,
                                      translated: str) -> str:
         """
         Format the translation result for forwarding.
 
         Args:
-            source: Source channel name
+            message: Original Telegram message
             original: Original Chinese text
             translated: Translated English text
 
@@ -181,9 +180,11 @@ class TranslatorPipeline(BasePipeline):
         # Truncate original text if too long (for reference only)
         original_preview = original[:200] + "..." if len(original) > 200 else original
 
-        return f"""**📰 {source}**
+        via_source = self._format_via_source(message)
 
-{translated}
+        return f"""{translated}
+
+{via_source}
 
 ---
 _Original (CN):_ {original_preview}
@@ -200,6 +201,6 @@ _Original (CN):_ {original_preview}
         Returns:
             bool: True if forwarded successfully
         """
-        source = self._get_source_info(message)
-        formatted = f"**📰 {source}**\n\n{text}"
+        via_source = self._format_via_source(message)
+        formatted = f"{text}\n\n{via_source}"
         return await self.forward_to_target(formatted)

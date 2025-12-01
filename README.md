@@ -1,6 +1,6 @@
-# Crypto Intelligence Aggregator & Router
+# Market Intelligence Aggregator & Router
 
-A production-ready Telegram intelligence bot that monitors crypto channels, processes messages through AI-powered pipelines, and forwards curated intelligence to your main account.
+A production-ready Telegram intelligence bot that monitors market intelligence channels, processes messages through AI-powered pipelines, and forwards curated intelligence to your main account.
 
 ## Overview
 
@@ -9,7 +9,7 @@ This bot acts as a "man-in-the-middle" automation system that:
 1. **Listens** to specific Telegram channels using a burner user account
 2. **Processes** incoming data through specialized pipelines:
    - **Pipeline A (Translator)**: Chinese news translation (BWEnews, Foresight News)
-   - **Pipeline B (Analyst)**: PDF research report analysis (DTpapers)
+   - **Pipeline B (Analyst)**: PDF equity research report analysis (DTpapers)
 3. **Forwards** processed intelligence to your main Telegram account
 
 ## Key Features
@@ -236,57 +236,55 @@ Original (CN): [First 200 chars of Chinese text]
 
 **Cost:** FREE
 
-### Pipeline B: PDF Research Analysis
+### Pipeline B: Equity Research Analysis
 
 **Channel:**
-- DTpapers (`-1001750561680`)
+- DTpapers (`-1001750561680`) - Equity research reports
 
 **Processing:**
 1. Detect PDF document in message
 2. Download PDF (non-blocking)
 3. Upload PDF directly to Gemini File API (multimodal)
-4. Gemini analyzes BOTH text AND visual elements (charts, graphs, token unlock schedules)
+4. Gemini analyzes BOTH text AND visual elements (charts, graphs, financial tables, valuation models)
 5. Forward AI summary + original PDF
 
 **Analysis Includes:**
-- Executive summary
-- Key alpha opportunities (from text and charts)
-- Catalysts & timeline (including dates from visual roadmaps)
-- Visual data insights (token economics, unlock schedules, market data)
-- Risks & considerations
+- The "Delta" - What changed (earnings, M&A, analyst day updates)
+- Live context cross-reference with current market data
+- Key insights & visuals (charts, revised estimates)
+- Bottom line actionability (noise vs dislocation)
+- Lateral watchlist suggestions
 
 **Why Multimodal?**
 Traditional text extraction would miss crucial visual data like:
-- Token unlock schedules (charts)
+- Revenue/EPS charts
 - Price targets (graphs)
-- Tokenomics breakdowns (pie charts)
-- Roadmap timelines (visual timelines)
+- Valuation model tables
+- Sector comparison charts
 
 **Output Format:**
 ```
-📊 Research Report Analysis
+📊 equity_research_report.pdf
 
-Source: DTpapers
-Report: crypto_report.pdf
+**Part 1: The "Delta" (What Changed?)**
+- Trigger: [Why this report was written]
+- Core Update: [Most important new data point]
+- Consensus Check: [Street view change or echo chamber]
 
----
+**Part 2: Live Context Cross-Reference**
+- Price Action: [Last 5 days performance]
+- Sector Sentiment: [Sector ETF performance]
+- Fact Check: [Catalyst timeline verification]
 
-## Executive Summary
-...
+**Part 3: Key Insights & Visuals**
+- Visual Synthesis: [Analysis of key charts]
+- The Numbers: [Revenue/EPS estimates]
 
-## Key Alpha Opportunities
-- [Insights from both text and charts]
-- [Token unlock schedules from visual data]
+**Part 4: The Bottom Line**
+- Verdict: [Noise / Maintenance / Dislocation]
+- Lateral Watchlist: [Related tickers to watch]
 
-## Catalysts & Timeline
-- [Dates extracted from roadmap charts]
-
-## Visual Data Insights
-- [Analysis of charts, graphs, tables]
-- [Token economics from pie charts]
-
-## Risks & Considerations
-...
+via [DTpapers](https://t.me/dtpapers/123)
 
 [PDF attached]
 ```
@@ -517,10 +515,11 @@ class CustomPipeline(BasePipeline):
 Edit `services/gemini_service.py`:
 
 ```python
-def _build_crypto_analysis_prompt(self, text: str) -> str:
-    return f"""Your custom prompt here...
+def _build_equity_analysis_prompt(self) -> str:
+    return """Your custom prompt here...
 
-    {text}
+    # Role: Senior Market Intelligence Analyst
+    ...
     """
 ```
 

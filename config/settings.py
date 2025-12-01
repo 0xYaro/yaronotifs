@@ -46,12 +46,12 @@ class Settings:
         self.TRANSLATOR_CHANNELS: List[int] = [
             -1001279597711,    # BWEnews
             -1001526765830,    # Foresight News
-            -1003309883285,    # Yaro Notifs [Test Channel]
         ]
 
         # Pipeline B: PDF Analysis Channels (Gemini Summarization)
         self.ANALYST_CHANNELS: List[int] = [
             -1001750561680,    # DTpapers
+            -1003309883285,    # Yaro Notifs [Test Channel]
         ]
 
         # All monitored channels

@@ -11,11 +11,11 @@ class AnalystPipeline(BasePipeline):
     """
     Pipeline B: PDF Research Report Analysis Pipeline
 
-    This pipeline handles messages from DTpapers channel containing PDF research reports.
+    This pipeline handles messages from DTpapers channel containing equity research reports.
     It downloads PDFs and sends them directly to Gemini's File API for multimodal analysis.
 
     Key Feature: Uses Gemini's native PDF processing to analyze both text AND visual
-    elements (charts, graphs, token unlock schedules) - not just text extraction.
+    elements (charts, graphs, financial tables, valuation models) - not just text extraction.
 
     Cost: METERED (Gemini API - approximately $0.001-0.002 per report)
     """
@@ -70,9 +70,8 @@ class AnalystPipeline(BasePipeline):
             summary = await self.gemini.analyze_pdf_file(pdf_path)
 
             # Format and forward the result with the PDF attached
-            source = self._get_source_info(message)
             formatted_message = self._format_analysis_result(
-                source=source,
+                message=message,
                 filename=filename,
                 summary=summary
             )
@@ -132,27 +131,23 @@ class AnalystPipeline(BasePipeline):
             self.logger.error(f"Failed to download PDF: {e}")
             raise
 
-    def _format_analysis_result(self, source: str, filename: str, summary: str) -> str:
+    def _format_analysis_result(self, message: Message, filename: str, summary: str) -> str:
         """
         Format the analysis result for forwarding.
 
         Args:
-            source: Source channel name
+            message: Original Telegram message
             filename: PDF filename
             summary: Gemini-generated summary
 
         Returns:
             str: Formatted message in Markdown
         """
-        return f"""**📊 Research Report Analysis**
+        via_source = self._format_via_source(message)
 
-**Source:** {source}
-**Report:** {filename}
-
----
+        return f"""**📊 {filename}**
 
 {summary}
 
----
-_Analysis powered by Gemini Flash 1.5_
+{via_source}
 """
