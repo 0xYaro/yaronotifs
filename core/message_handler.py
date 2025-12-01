@@ -3,7 +3,7 @@ from typing import Dict
 from telethon.tl.types import Message
 
 from config import settings
-from pipelines import TranslatorPipeline, AnalystPipeline
+from pipelines import UnifiedPipeline
 from services import StatusReporter
 from utils import get_logger
 
@@ -16,11 +16,13 @@ class MessageHandler:
 
     This class:
     1. Receives messages from monitored channels
-    2. Routes messages to the appropriate pipeline based on source
+    2. Processes all messages through the unified pipeline
     3. Ensures non-blocking processing using asyncio.create_task()
     4. Tracks processing metrics
 
     Key Design:
+    - All messages go through a single UnifiedPipeline
+    - LLM intelligently determines processing needs
     - Each message is processed in a separate async task
     - PDF downloads never block text message processing
     - Graceful error handling prevents crashes
@@ -37,13 +39,8 @@ class MessageHandler:
         self.output_channel_id = settings.OUTPUT_CHANNEL_ID
         self.status_destination_id = settings.STATUS_DESTINATION_ID
 
-        # Initialize pipelines
-        self.translator_pipeline = TranslatorPipeline(
-            client=telegram_client.client,
-            output_channel_id=self.output_channel_id
-        )
-
-        self.analyst_pipeline = AnalystPipeline(
+        # Initialize unified pipeline
+        self.unified_pipeline = UnifiedPipeline(
             client=telegram_client.client,
             output_channel_id=self.output_channel_id
         )
@@ -57,12 +54,11 @@ class MessageHandler:
         # Metrics tracking
         self.metrics = {
             'total_messages': 0,
-            'translator_processed': 0,
-            'analyst_processed': 0,
+            'processed': 0,
             'errors': 0
         }
 
-        logger.info("MessageHandler initialized with pipelines")
+        logger.info("MessageHandler initialized with UnifiedPipeline")
 
     def register_handlers(self):
         """
@@ -70,20 +66,22 @@ class MessageHandler:
 
         This sets up event listeners that route messages to the handle_message method.
         """
-        all_channels = settings.ALL_CHANNELS
+        print(f"DEBUG: register_handlers() called")
+        all_channels = settings.MONITORED_CHANNELS
+        print(f"DEBUG: all_channels = {all_channels}")
 
         self.client.on_new_message(
             chat_ids=all_channels,
             handler=self.handle_message
         )
+        print(f"DEBUG: on_new_message() completed")
 
-        logger.info(f"✓ Registered handlers for {len(all_channels)} channels:")
-        logger.info(f"  - Translator channels: {len(settings.TRANSLATOR_CHANNELS)}")
-        logger.info(f"  - Analyst channels: {len(settings.ANALYST_CHANNELS)}")
+        logger.info(f"✓ Registered handlers for {len(all_channels)} channels")
+        logger.info(f"  - All messages will be processed through UnifiedPipeline")
 
     async def handle_message(self, message: Message):
         """
-        Handle an incoming message by routing it to the appropriate pipeline.
+        Handle an incoming message through the unified pipeline.
 
         CRITICAL: This method uses asyncio.create_task() to process messages
         concurrently. This ensures that a slow PDF download doesn't block
@@ -92,101 +90,60 @@ class MessageHandler:
         Args:
             message: Incoming Telegram message
         """
+        print(f"DEBUG: handle_message() called! Message received!")
         self.metrics['total_messages'] += 1
 
         try:
             # Get channel ID
             channel_id = message.chat_id if hasattr(message, 'chat_id') else None
+            print(f"DEBUG: channel_id = {channel_id}")
             if not channel_id:
                 logger.warning("Message has no chat_id, skipping")
                 return
 
-            # Determine pipeline
-            pipeline_type = settings.get_pipeline_for_channel(channel_id)
-
-            if pipeline_type == 'unknown':
-                logger.warning(f"Message from unknown channel: {channel_id}")
-                return
-
             # Log message receipt
-            logger.info(f"📩 New message from channel {channel_id} → {pipeline_type} pipeline")
+            logger.info(f"📩 New message from channel {channel_id} → UnifiedPipeline")
+            print(f"DEBUG: About to process message through UnifiedPipeline")
 
             # Create a background task for processing
             # This is the KEY to non-blocking concurrency
-            if pipeline_type == 'translator':
-                asyncio.create_task(self._process_translator(message))
-            elif pipeline_type == 'analyst':
-                asyncio.create_task(self._process_analyst(message))
+            asyncio.create_task(self._process_message(message))
 
         except Exception as e:
             logger.error(f"Error in handle_message: {e}", exc_info=True)
             self.metrics['errors'] += 1
 
-    async def _process_translator(self, message: Message):
+    async def _process_message(self, message: Message):
         """
-        Process a message through the Translator pipeline (Pipeline A).
+        Process a message through the UnifiedPipeline.
 
         This runs as an independent task and won't block other messages.
+        The UnifiedPipeline intelligently determines what processing is needed.
 
         Args:
             message: Telegram message
         """
         try:
-            success = await self.translator_pipeline.process(message)
+            success = await self.unified_pipeline.process(message)
             if success:
-                self.metrics['translator_processed'] += 1
-                logger.info("✓ Translator pipeline completed")
+                self.metrics['processed'] += 1
+                logger.info("✓ UnifiedPipeline completed")
             else:
-                logger.warning("✗ Translator pipeline failed")
+                logger.warning("✗ UnifiedPipeline failed")
                 self.metrics['errors'] += 1
                 # Report error to status channel
                 await self.status_reporter.report_error(
-                    error_type="Translator Pipeline Failure",
-                    error_message="Message processing failed in translator pipeline",
+                    error_type="UnifiedPipeline Failure",
+                    error_message="Message processing failed in unified pipeline",
                     context={"channel_id": message.chat_id}
                 )
 
         except Exception as e:
-            logger.error(f"Error in translator pipeline: {e}", exc_info=True)
+            logger.error(f"Error in unified pipeline: {e}", exc_info=True)
             self.metrics['errors'] += 1
             # Report error to status channel
             await self.status_reporter.report_error(
-                error_type="Translator Pipeline Exception",
-                error_message=str(e),
-                context={"channel_id": message.chat_id}
-            )
-
-    async def _process_analyst(self, message: Message):
-        """
-        Process a message through the Analyst pipeline (Pipeline B).
-
-        This runs as an independent task. PDF downloads and AI processing
-        happen in the background without blocking other messages.
-
-        Args:
-            message: Telegram message
-        """
-        try:
-            success = await self.analyst_pipeline.process(message)
-            if success:
-                self.metrics['analyst_processed'] += 1
-                logger.info("✓ Analyst pipeline completed")
-            else:
-                logger.warning("✗ Analyst pipeline failed")
-                self.metrics['errors'] += 1
-                # Report error to status channel
-                await self.status_reporter.report_error(
-                    error_type="Analyst Pipeline Failure",
-                    error_message="PDF processing failed in analyst pipeline",
-                    context={"channel_id": message.chat_id}
-                )
-
-        except Exception as e:
-            logger.error(f"Error in analyst pipeline: {e}", exc_info=True)
-            self.metrics['errors'] += 1
-            # Report error to status channel
-            await self.status_reporter.report_error(
-                error_type="Analyst Pipeline Exception",
+                error_type="UnifiedPipeline Exception",
                 error_message=str(e),
                 context={"channel_id": message.chat_id}
             )
@@ -215,12 +172,11 @@ class MessageHandler:
         try:
             report = f"""**📊 Bot Status Report**
 
-**Messages Processed:** {self.metrics['total_messages']}
-**Translator Pipeline:** {self.metrics['translator_processed']}
-**Analyst Pipeline:** {self.metrics['analyst_processed']}
+**Messages Received:** {self.metrics['total_messages']}
+**Successfully Processed:** {self.metrics['processed']}
 **Errors:** {self.metrics['errors']}
 
-_Bot is running and monitoring channels_
+_Bot is running with UnifiedPipeline architecture_
 """
             await self.client.send_message(
                 self.status_destination_id,

@@ -166,6 +166,261 @@ class GeminiService:
 **Format:** Bullet points. Maximum 300-500 words, optimized for reading as a message on Telegram
 """
 
+    @retry_async(max_attempts=3, delay=2.0, backoff=2.0)
+    async def process_text_message(self, text: str, context: dict) -> str:
+        """
+        Process a text message using LLM to intelligently handle:
+        - Language detection and translation
+        - Summarization
+        - Key insight extraction
+        - Contextual analysis
+
+        Args:
+            text: The message text to process
+            context: Context information about the message (source, language, etc.)
+
+        Returns:
+            str: Processed and formatted content
+
+        Raises:
+            Exception: If API call fails after retries
+        """
+        try:
+            prompt = self._build_text_processing_prompt(text, context)
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.model.generate_content(prompt)
+            )
+
+            if not response or not response.text:
+                raise ValueError("Empty response from Gemini API")
+
+            result = response.text.strip()
+            logger.info(f"Processed text message: {len(result)} characters")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Gemini text processing error: {e}")
+            raise
+
+    @retry_async(max_attempts=3, delay=2.0, backoff=2.0)
+    async def process_document(self, file_path: Path, context: dict) -> str:
+        """
+        Process a document (PDF, image, etc.) using LLM's multimodal capabilities.
+
+        This method analyzes both text and visual elements to provide:
+        - Content type detection
+        - Comprehensive analysis
+        - Key insights extraction
+        - Contextual understanding
+
+        Args:
+            file_path: Path to the document file
+            context: Context information about the message
+
+        Returns:
+            str: Processed and formatted content
+
+        Raises:
+            Exception: If API call fails after retries
+        """
+        if not file_path.exists():
+            raise FileNotFoundError(f"Document file not found: {file_path}")
+
+        try:
+            # Upload the file to Gemini
+            logger.info(f"Uploading document to Gemini File API: {file_path.name}")
+
+            loop = asyncio.get_event_loop()
+            uploaded_file = await loop.run_in_executor(
+                None,
+                lambda: genai.upload_file(str(file_path))
+            )
+
+            logger.info(f"File uploaded: {uploaded_file.name} ({uploaded_file.state.name})")
+
+            # Wait for file processing if needed
+            if uploaded_file.state.name == "PROCESSING":
+                import time
+                max_wait = 60  # Maximum 60 seconds
+                wait_time = 0
+
+                while uploaded_file.state.name == "PROCESSING" and wait_time < max_wait:
+                    await asyncio.sleep(2)
+                    wait_time += 2
+                    uploaded_file = await loop.run_in_executor(
+                        None,
+                        lambda: genai.get_file(uploaded_file.name)
+                    )
+
+                if uploaded_file.state.name == "PROCESSING":
+                    raise TimeoutError("File processing timed out")
+
+            if uploaded_file.state.name == "FAILED":
+                raise ValueError(f"File processing failed: {uploaded_file.state}")
+
+            # Generate analysis using the uploaded file
+            prompt = self._build_document_processing_prompt(context)
+
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.model.generate_content([uploaded_file, prompt])
+            )
+
+            if not response or not response.text:
+                raise ValueError("Empty response from Gemini API")
+
+            result = response.text.strip()
+            logger.info(f"Processed document: {len(result)} characters")
+
+            # Delete the uploaded file to save quota
+            await loop.run_in_executor(
+                None,
+                lambda: genai.delete_file(uploaded_file.name)
+            )
+            logger.debug(f"Deleted uploaded file: {uploaded_file.name}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Gemini document processing error: {e}")
+            raise
+
+    def _build_text_processing_prompt(self, text: str, context: dict) -> str:
+        """
+        Build a prompt for intelligent text processing.
+
+        Args:
+            text: The text to process
+            context: Context information
+
+        Returns:
+            str: Formatted prompt for Gemini
+        """
+        has_chinese = context.get("has_chinese", False)
+        source_channel = context.get("source_channel", "Unknown Source")
+
+        if has_chinese:
+            return f"""# Role: Market Intelligence Analyst & Translator
+
+**Source:** {source_channel}
+
+**Task:** Process the following message for a professional investor. The message contains Chinese text.
+
+**Instructions:**
+1. **Translate** the Chinese text to English (if present)
+2. **Summarize** the key points in bullet format
+3. **Extract** any actionable insights, market movements, or important announcements
+4. **Format** for readability on Telegram (use markdown)
+
+**Content Type Detection:**
+- If this is breaking news, mark it as "🚨 BREAKING"
+- If this mentions specific tokens/stocks, highlight them
+- If there are numbers/data, preserve them accurately
+
+**Output Format:**
+[Translated and summarized content in clear, concise English]
+
+**Tone:** Professional, objective, data-focused
+**Length:** 200-400 words maximum
+
+---
+
+**Message to process:**
+
+{text}
+"""
+        else:
+            return f"""# Role: Market Intelligence Analyst
+
+**Source:** {source_channel}
+
+**Task:** Process the following message for a professional investor.
+
+**Instructions:**
+1. **Summarize** the key points in bullet format
+2. **Extract** any actionable insights, market movements, or important announcements
+3. **Highlight** any critical data points or numbers
+4. **Format** for readability on Telegram (use markdown)
+
+**Content Type Detection:**
+- If this is breaking news, mark it as "🚨 BREAKING"
+- If this mentions specific tokens/stocks, highlight them
+- If there are numbers/data, preserve them accurately
+
+**Output Format:**
+[Summarized content in clear, concise format]
+
+**Tone:** Professional, objective, data-focused
+**Length:** 200-400 words maximum
+
+---
+
+**Message to process:**
+
+{text}
+"""
+
+    def _build_document_processing_prompt(self, context: dict) -> str:
+        """
+        Build a prompt for intelligent document processing.
+
+        This prompt instructs the LLM to analyze documents comprehensively,
+        including both text and visual elements.
+
+        Args:
+            context: Context information
+
+        Returns:
+            str: Formatted prompt for Gemini
+        """
+        source_channel = context.get("source_channel", "Unknown Source")
+
+        return f"""# Role: Senior Market Intelligence Analyst (Buy-Side)
+
+**Source:** {source_channel}
+
+**Objective:** Analyze this document and synthesize it into actionable intelligence for a professional investor.
+
+---
+
+## Analysis Framework:
+
+### **Part 1: Document Type & Context**
+* **Document Type:** Identify what this is (equity research report, news article, whitepaper, presentation, etc.)
+* **The Trigger:** Why was this document created? (Earnings, M&A, product launch, analyst day, etc.)
+* **The Core Update:** What is the single most important new information in this document?
+
+### **Part 2: Key Insights & Data**
+* **Visual Analysis:** Analyze any charts, graphs, tables, or visual elements. What story do they tell?
+* **The Numbers:** Extract key data points (revenue, growth rates, estimates, valuations, etc.)
+* **Consensus Check:** Does this align with or contradict prevailing market sentiment?
+
+### **Part 3: Market Context** (if applicable)
+* **Price Action Relevance:** Consider recent market movements related to this content
+* **Sector Implications:** What does this mean for the broader sector/industry?
+* **Cross-References:** What other companies/assets should we monitor based on this?
+
+### **Part 4: Actionability**
+* **Verdict:** Is this "Noise" (ignore), "Maintenance" (monitor), or "Dislocation" (act now)?
+* **Key Takeaways:** 3-5 bullet points of what matters most
+* **Watchlist:** Related tickers/assets to monitor
+
+---
+
+**Output Requirements:**
+- Use markdown formatting for readability on Telegram
+- Include bullet points for easy scanning
+- Highlight critical data with **bold**
+- Keep total length to 400-600 words
+- Be objective, cynical, and data-first
+
+**Tone:** Professional, analytical, actionable
+"""
+
     async def health_check(self) -> bool:
         """
         Verify that the Gemini API is accessible and functioning.

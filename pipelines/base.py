@@ -60,27 +60,109 @@ class BasePipeline(ABC):
             bool: True if sent successfully, False otherwise
         """
         try:
+            # Telegram limits: 4096 chars for messages, 1024 for captions
+            MAX_MESSAGE_LENGTH = 4000  # Leave margin
+            MAX_CAPTION_LENGTH = 1000  # Leave margin
+
             if file_path:
-                await self.client.send_file(
-                    self.output_channel_id,
-                    file_path,
-                    caption=text,
-                    parse_mode=parse_mode
-                )
-                self.logger.info(f"Sent message with file to output channel")
+                if len(text) > MAX_CAPTION_LENGTH:
+                    # Text too long for caption, send separately
+                    # Split text if needed
+                    if len(text) > MAX_MESSAGE_LENGTH:
+                        # Split into chunks
+                        chunks = self._split_text(text, MAX_MESSAGE_LENGTH)
+                        for i, chunk in enumerate(chunks):
+                            await self.client.send_message(
+                                self.output_channel_id,
+                                chunk,
+                                parse_mode=parse_mode
+                            )
+                            self.logger.info(f"Sent text chunk {i+1}/{len(chunks)}")
+                    else:
+                        # Send as single message
+                        await self.client.send_message(
+                            self.output_channel_id,
+                            text,
+                            parse_mode=parse_mode
+                        )
+
+                    # Send file with short caption
+                    await self.client.send_file(
+                        self.output_channel_id,
+                        file_path,
+                        caption="📎 Attached document"
+                    )
+                    self.logger.info(f"Sent file to output channel")
+                else:
+                    # Send file with caption
+                    await self.client.send_file(
+                        self.output_channel_id,
+                        file_path,
+                        caption=text,
+                        parse_mode=parse_mode
+                    )
+                    self.logger.info(f"Sent message with file to output channel")
             else:
-                await self.client.send_message(
-                    self.output_channel_id,
-                    text,
-                    parse_mode=parse_mode
-                )
-                self.logger.info(f"Sent message to output channel")
+                # Text only - split if needed
+                if len(text) > MAX_MESSAGE_LENGTH:
+                    chunks = self._split_text(text, MAX_MESSAGE_LENGTH)
+                    for i, chunk in enumerate(chunks):
+                        await self.client.send_message(
+                            self.output_channel_id,
+                            chunk,
+                            parse_mode=parse_mode
+                        )
+                        self.logger.info(f"Sent text chunk {i+1}/{len(chunks)}")
+                else:
+                    await self.client.send_message(
+                        self.output_channel_id,
+                        text,
+                        parse_mode=parse_mode
+                    )
+                    self.logger.info(f"Sent message to output channel")
 
             return True
 
         except Exception as e:
             self.logger.error(f"Failed to forward to output channel: {e}")
             return False
+
+    def _split_text(self, text: str, max_length: int) -> list:
+        """
+        Split text into chunks at paragraph boundaries.
+
+        Args:
+            text: Text to split
+            max_length: Maximum length per chunk
+
+        Returns:
+            list: List of text chunks
+        """
+        if len(text) <= max_length:
+            return [text]
+
+        chunks = []
+        current_chunk = ""
+
+        # Split by paragraphs (double newline or single newline)
+        paragraphs = text.split('\n\n')
+
+        for para in paragraphs:
+            # If adding this paragraph would exceed limit
+            if len(current_chunk) + len(para) + 2 > max_length:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = para
+            else:
+                if current_chunk:
+                    current_chunk += '\n\n' + para
+                else:
+                    current_chunk = para
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
 
     def _get_source_info(self, message: Message) -> str:
         """
@@ -136,7 +218,7 @@ class BasePipeline(ABC):
 
     def _format_via_source(self, message: Message) -> str:
         """
-        Format the "via Channel_Name (link)" footer for messages.
+        Format the "Channel_Name (link)" footer for messages.
 
         Args:
             message: Telegram message
@@ -148,6 +230,6 @@ class BasePipeline(ABC):
         message_link = self._get_message_link(message)
 
         if message_link:
-            return f"via [{channel_name}]({message_link})"
+            return f"[{channel_name}]({message_link})"
         else:
-            return f"via {channel_name}"
+            return f"{channel_name}"

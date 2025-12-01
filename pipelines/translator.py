@@ -177,18 +177,11 @@ class TranslatorPipeline(BasePipeline):
         Returns:
             str: Formatted message in Markdown
         """
-        # Truncate original text if too long (for reference only)
-        original_preview = original[:200] + "..." if len(original) > 200 else original
-
         via_source = self._format_via_source(message)
 
         return f"""{translated}
 
-{via_source}
-
----
-_Original (CN):_ {original_preview}
-"""
+from: {via_source}"""
 
     async def _forward_original(self, message: Message, text: str) -> bool:
         """
@@ -202,5 +195,5 @@ _Original (CN):_ {original_preview}
             bool: True if forwarded successfully
         """
         via_source = self._format_via_source(message)
-        formatted = f"{text}\n\n{via_source}"
+        formatted = f"{text}\n\nfrom: {via_source}"
         return await self.forward_to_target(formatted)

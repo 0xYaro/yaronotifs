@@ -41,21 +41,15 @@ class Settings:
         # Application Settings
         self.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
-        # Channel Definitions and Routing
-        # Pipeline A: Chinese News Channels (Translation)
-        self.TRANSLATOR_CHANNELS: List[int] = [
-            -1001279597711,    # BWEnews
-            -1001526765830,    # Foresight News
-        ]
-
-        # Pipeline B: PDF Analysis Channels (Gemini Summarization)
-        self.ANALYST_CHANNELS: List[int] = [
-            -1001750561680,    # DTpapers
+        # Channel Definitions
+        # All channels are processed through the UnifiedPipeline
+        # The LLM intelligently determines what processing is needed
+        self.MONITORED_CHANNELS: List[int] = [
+            -1001279597711,    # BWEnews (Chinese news)
+            -1001526765830,    # Foresight News (Chinese news)
+            -1001750561680,    # DTpapers (Equity research PDFs)
             -1003309883285,    # Yaro Notifs [Test Channel]
         ]
-
-        # All monitored channels
-        self.ALL_CHANNELS = self.TRANSLATOR_CHANNELS + self.ANALYST_CHANNELS
 
         # Retry Configuration
         self.MAX_RETRIES = 3
@@ -95,22 +89,17 @@ class Settings:
 
         return True
 
-    def get_pipeline_for_channel(self, channel_id: int) -> str:
+    def is_monitored_channel(self, channel_id: int) -> bool:
         """
-        Determine which processing pipeline to use for a given channel.
+        Check if a channel is being monitored.
 
         Args:
             channel_id: The Telegram channel ID
 
         Returns:
-            str: 'translator', 'analyst', or 'unknown'
+            bool: True if channel is monitored, False otherwise
         """
-        if channel_id in self.TRANSLATOR_CHANNELS:
-            return 'translator'
-        elif channel_id in self.ANALYST_CHANNELS:
-            return 'analyst'
-        else:
-            return 'unknown'
+        return channel_id in self.MONITORED_CHANNELS
 
 
 # Global settings instance

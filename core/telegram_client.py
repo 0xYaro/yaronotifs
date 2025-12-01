@@ -1,4 +1,6 @@
 import asyncio
+import os
+import time
 from pathlib import Path
 from typing import Optional, Callable
 
@@ -7,7 +9,8 @@ from telethon.errors import (
     SessionPasswordNeededError,
     PhoneCodeExpiredError,
     PhoneCodeInvalidError,
-    FloodWaitError
+    FloodWaitError,
+    AuthKeyDuplicatedError
 )
 from telethon.tl.types import Message
 
@@ -51,6 +54,7 @@ class TelegramClientWrapper:
 
         # Session file path
         self.session_path = settings.BASE_DIR / f"{self.session_name}.session"
+        self.lock_file = settings.BASE_DIR / f"{self.session_name}.lock"
 
         # Initialize the client
         self.client = TelegramClient(
@@ -81,10 +85,27 @@ class TelegramClientWrapper:
         try:
             logger.info("Starting Telegram client...")
 
+            # Check for existing lock file (prevents multiple instances)
+            if self._check_existing_lock():
+                logger.error("=" * 60)
+                logger.error("CRITICAL: Another instance of this bot is already running!")
+                logger.error("Running multiple instances with the same session will cause:")
+                logger.error("  - Telegram session conflicts (AuthKeyDuplicatedError)")
+                logger.error("  - IP address bans from Telegram")
+                logger.error("  - Account suspension")
+                logger.error("")
+                logger.error("Please stop the other instance before starting this one.")
+                logger.error(f"Lock file: {self.lock_file}")
+                logger.error("=" * 60)
+                return False
+
             if force_login or not self.session_path.exists():
                 logger.warning("Session file not found or force_login=True")
                 logger.warning("Please run create_session.py first to authenticate locally")
                 return False
+
+            # Create lock file to prevent concurrent access
+            self._create_lock_file()
 
             # Connect using existing session
             await self.client.start(phone=self.phone)
@@ -93,6 +114,7 @@ class TelegramClientWrapper:
             if not await self.client.is_user_authorized():
                 logger.error("Session file exists but user is not authorized")
                 logger.error("Please delete the session file and run create_session.py again")
+                self._remove_lock_file()
                 return False
 
             # Get user info
@@ -102,8 +124,23 @@ class TelegramClientWrapper:
             self._running = True
             return True
 
+        except AuthKeyDuplicatedError as e:
+            logger.error("=" * 60)
+            logger.error("CRITICAL: Session is being used from another IP address!")
+            logger.error("This happens when the same session file is used simultaneously")
+            logger.error("from multiple locations (e.g., local machine + AWS server).")
+            logger.error("")
+            logger.error("ACTION REQUIRED:")
+            logger.error("  1. Stop ALL other instances of this bot")
+            logger.error("  2. Wait 60 seconds for Telegram to release the session")
+            logger.error("  3. Only run ONE instance at a time")
+            logger.error("  4. DO NOT copy session files between machines")
+            logger.error("=" * 60)
+            self._remove_lock_file()
+            return False
         except Exception as e:
             logger.error(f"Failed to start Telegram client: {e}", exc_info=True)
+            self._remove_lock_file()
             return False
 
     async def stop(self):
@@ -119,6 +156,9 @@ class TelegramClientWrapper:
             logger.info("✓ Telegram client stopped")
         except Exception as e:
             logger.error(f"Error during client shutdown: {e}")
+        finally:
+            # Always remove lock file on shutdown
+            self._remove_lock_file()
 
     def is_running(self) -> bool:
         """
@@ -137,15 +177,28 @@ class TelegramClientWrapper:
             chat_ids: List of chat IDs to monitor
             handler: Async function to handle messages
         """
-        @self.client.on(events.NewMessage(chats=chat_ids))
+        print(f"DEBUG: on_new_message() registering for {len(chat_ids)} chats: {chat_ids}")
+
         async def message_wrapper(event):
+            print(f"DEBUG: !!!EVENT TRIGGERED!!! Chat: {event.chat_id}, Message ID: {event.message.id}")
             try:
-                # Process in background to avoid blocking other messages
-                asyncio.create_task(handler(event.message))
+                # Call handler directly (not in background task)
+                await handler(event.message)
+                print(f"DEBUG: Handler completed successfully")
             except Exception as e:
                 logger.error(f"Error in message handler: {e}", exc_info=True)
+                print(f"DEBUG: ERROR in handler: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Use add_event_handler instead of decorator - works better with running clients
+        self.client.add_event_handler(
+            message_wrapper,
+            events.NewMessage(chats=chat_ids, incoming=True)
+        )
 
         self._message_handlers.append(message_wrapper)
+        print(f"DEBUG: Handler registered successfully for chats: {chat_ids}")
         logger.info(f"Registered message handler for {len(chat_ids)} chat(s)")
 
     async def run_until_disconnected(self):
@@ -218,3 +271,71 @@ class TelegramClientWrapper:
             file: Target file path
         """
         return await self.client.download_media(message, file=file)
+
+    def _check_existing_lock(self) -> bool:
+        """
+        Check if a lock file exists and is still valid.
+
+        Returns:
+            bool: True if another instance is running, False otherwise
+        """
+        if not self.lock_file.exists():
+            return False
+
+        try:
+            # Read lock file to get PID and timestamp
+            with open(self.lock_file, 'r') as f:
+                data = f.read().strip().split('\n')
+                if len(data) >= 2:
+                    pid = int(data[0])
+                    timestamp = float(data[1])
+
+                    # Check if the process is still running
+                    try:
+                        os.kill(pid, 0)  # Signal 0 just checks if process exists
+                        # Process exists
+                        age_hours = (time.time() - timestamp) / 3600
+                        if age_hours > 24:
+                            # Stale lock file (older than 24 hours), remove it
+                            logger.warning(f"Removing stale lock file (age: {age_hours:.1f} hours)")
+                            self.lock_file.unlink()
+                            return False
+                        return True
+                    except ProcessLookupError:
+                        # Process doesn't exist, remove stale lock file
+                        logger.warning("Removing lock file from dead process")
+                        self.lock_file.unlink()
+                        return False
+        except Exception as e:
+            logger.warning(f"Error checking lock file: {e}")
+            # If we can't read the lock file, remove it
+            try:
+                self.lock_file.unlink()
+            except:
+                pass
+            return False
+
+        return False
+
+    def _create_lock_file(self):
+        """
+        Create a lock file with current process ID and timestamp.
+        """
+        try:
+            with open(self.lock_file, 'w') as f:
+                f.write(f"{os.getpid()}\n")
+                f.write(f"{time.time()}\n")
+            logger.info(f"Created lock file: {self.lock_file}")
+        except Exception as e:
+            logger.error(f"Failed to create lock file: {e}")
+
+    def _remove_lock_file(self):
+        """
+        Remove the lock file when shutting down.
+        """
+        try:
+            if self.lock_file.exists():
+                self.lock_file.unlink()
+                logger.info("Removed lock file")
+        except Exception as e:
+            logger.warning(f"Failed to remove lock file: {e}")

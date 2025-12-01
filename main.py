@@ -119,16 +119,18 @@ async def main():
     logger.info("✓ BOT IS RUNNING")
     logger.info("=" * 60)
     logger.info("")
-    logger.info(f"Monitoring {len(settings.ALL_CHANNELS)} channels:")
-    logger.info(f"  • Translator Pipeline: {len(settings.TRANSLATOR_CHANNELS)} channels")
-    logger.info(f"  • Analyst Pipeline: {len(settings.ANALYST_CHANNELS)} channels")
+    logger.info(f"Architecture: Unified Pipeline (LLM-powered)")
+    logger.info(f"Monitoring {len(settings.MONITORED_CHANNELS)} channels:")
+    for channel_id in settings.MONITORED_CHANNELS:
+        logger.info(f"  • Channel: {channel_id}")
     logger.info("")
+    logger.info("All messages processed through UnifiedPipeline")
     logger.info("Press Ctrl+C to stop")
     logger.info("")
 
     # Send startup notification to status channel
     await message_handler.status_reporter.report_startup(
-        monitored_channels=len(settings.ALL_CHANNELS)
+        monitored_channels=len(settings.MONITORED_CHANNELS)
     )
 
     # Start periodic status updates (every 4 hours)
@@ -172,8 +174,7 @@ async def main():
         logger.info("")
         logger.info("Final Statistics:")
         logger.info(f"  Total Messages: {metrics['total_messages']}")
-        logger.info(f"  Translator Processed: {metrics['translator_processed']}")
-        logger.info(f"  Analyst Processed: {metrics['analyst_processed']}")
+        logger.info(f"  Successfully Processed: {metrics['processed']}")
         logger.info(f"  Errors: {metrics['errors']}")
         logger.info("")
         logger.info("Goodbye!")

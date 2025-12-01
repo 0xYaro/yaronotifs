@@ -145,9 +145,6 @@ class AnalystPipeline(BasePipeline):
         """
         via_source = self._format_via_source(message)
 
-        return f"""**📊 {filename}**
+        return f"""{summary}
 
-{summary}
-
-{via_source}
-"""
+from: {via_source}"""

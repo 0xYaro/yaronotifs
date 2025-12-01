@@ -1,16 +1,18 @@
 # Market Intelligence Aggregator & Router
 
-A production-ready Telegram intelligence bot that monitors market intelligence channels, processes messages through AI-powered pipelines, and forwards curated intelligence to your main account.
+A production-ready Telegram intelligence bot that monitors market intelligence channels, processes messages through an AI-powered unified pipeline, and forwards curated intelligence to your main account.
 
 ## Overview
 
 This bot acts as a "man-in-the-middle" automation system that:
 
-1. **Listens** to specific Telegram channels using a burner user account
-2. **Processes** incoming data through specialized pipelines:
-   - **Pipeline A (Translator)**: Chinese news translation (BWEnews, Foresight News)
-   - **Pipeline B (Analyst)**: PDF equity research report analysis (DTpapers)
-3. **Forwards** processed intelligence to your main Telegram account
+1. **Listens** to any Telegram channels using a burner user account
+2. **Processes** incoming data through a **Unified AI Pipeline**:
+   - **LLM-powered content routing**: Automatically detects content type and applies appropriate processing
+   - **Translation**: Chinese to English for news channels
+   - **Analysis**: Deep analysis of PDF research reports (text + visual elements)
+   - **Summarization**: Key insights extraction from all content types
+3. **Forwards** processed intelligence to your main Telegram account in a consistent format
 
 ## Key Features
 
@@ -26,11 +28,11 @@ This bot acts as a "man-in-the-middle" automation system that:
 - Session file management for headless operation
 - Comprehensive error handling and auto-reconnection
 
-### Cost Optimized
-- **Pipeline A**: FREE (uses Google Translate via deep-translator)
-- **Pipeline B**: ~$0.001-0.002 per PDF (Gemini Flash 1.5)
-- No unnecessary LLM calls
-- Efficient resource usage
+### AI-Powered Intelligence
+- **Unified Pipeline**: All messages processed through Gemini Flash 2.5
+- **Smart Content Detection**: LLM automatically determines processing needs
+- **Consistent Output**: Unified format for all intelligence
+- **Cost**: ~$0.0001-0.002 per message depending on complexity
 
 ### Resilient Architecture
 - Automatic reconnection on network failures
@@ -45,16 +47,35 @@ yaronotifs/
 ├── config/              # Configuration management
 ├── core/                # Telegram client wrapper & message routing
 ├── pipelines/           # Message processing pipelines
-│   ├── translator.py    # Pipeline A: Chinese translation
-│   └── analyst.py       # Pipeline B: PDF analysis
+│   ├── base.py          # Base pipeline class
+│   ├── unified.py       # Unified AI-powered pipeline (NEW)
+│   ├── translator.py    # Legacy: Chinese translation
+│   └── analyst.py       # Legacy: PDF analysis
 ├── services/            # External service integrations
-│   ├── gemini_service.py   # Google Gemini API
+│   ├── gemini_service.py   # Google Gemini API with intelligent routing
 │   └── pdf_service.py      # PDF download & extraction
 ├── utils/               # Logging, helpers, retry logic
 ├── scripts/             # Setup and utility scripts
 ├── main.py              # Application entry point
 └── requirements.txt
 ```
+
+### New Unified Architecture
+
+All incoming messages now flow through a **single UnifiedPipeline** that uses Gemini to:
+
+1. **Detect content type** (text, PDF, image, etc.)
+2. **Identify language** and translate if needed
+3. **Extract key insights** through intelligent summarization
+4. **Analyze documents** with multimodal capabilities (text + visuals)
+5. **Format output** consistently for all message types
+
+**Benefits:**
+- Simpler codebase (one pipeline instead of multiple)
+- More intelligent processing (LLM makes contextual decisions)
+- Easier to extend (add new sources like web scrapers)
+- Consistent output format
+- Better error handling
 
 ## Prerequisites
 
@@ -211,87 +232,77 @@ sudo systemctl status yaronotifs
 tail -f logs/bot.log
 ```
 
-## Pipeline Details
+## Unified Pipeline Processing
 
-### Pipeline A: Chinese News Translation
+The **UnifiedPipeline** intelligently processes all message types:
 
-**Channels:**
-- BWEnews (`-1001279597711`)
-- Foresight News (`-1001526765830`)
+### Text Messages (e.g., News Channels)
+
+**Default Channels:**
+- BWEnews (`-1001279597711`) - Chinese crypto news
+- Foresight News (`-1001526765830`) - Chinese crypto news
+- Any text-based channel you add
 
 **Processing:**
-1. Detect Chinese characters in message
-2. Translate to English using Google Translate (free)
-3. Forward with source attribution
+1. LLM detects language and content type
+2. Translates if Chinese (or other non-English languages)
+3. Extracts key insights and actionable information
+4. Summarizes in professional format
+5. Highlights breaking news, price movements, or important data
 
 **Output Format:**
 ```
-📰 BWEnews
+[Summarized and/or translated content]
 
-[Translated English text]
+Key Points:
+• [Important insight 1]
+• [Important insight 2]
+• [Important insight 3]
 
----
-Original (CN): [First 200 chars of Chinese text]
+from: [Source Channel](message_link)
 ```
 
-**Cost:** FREE
+### Document Messages (e.g., Research Reports)
 
-### Pipeline B: Equity Research Analysis
-
-**Channel:**
+**Default Channels:**
 - DTpapers (`-1001750561680`) - Equity research reports
+- Any channel with PDF documents
 
 **Processing:**
-1. Detect PDF document in message
-2. Download PDF (non-blocking)
-3. Upload PDF directly to Gemini File API (multimodal)
-4. Gemini analyzes BOTH text AND visual elements (charts, graphs, financial tables, valuation models)
-5. Forward AI summary + original PDF
+1. Downloads document (non-blocking)
+2. Uploads to Gemini File API (multimodal analysis)
+3. Analyzes BOTH text AND visual elements:
+   - Charts, graphs, financial tables
+   - Valuation models, price targets
+   - Revenue/EPS estimates
+4. Provides contextual market analysis
+5. Extracts actionable intelligence
 
-**Analysis Includes:**
-- The "Delta" - What changed (earnings, M&A, analyst day updates)
-- Live context cross-reference with current market data
-- Key insights & visuals (charts, revised estimates)
-- Bottom line actionability (noise vs dislocation)
-- Lateral watchlist suggestions
-
-**Why Multimodal?**
-Traditional text extraction would miss crucial visual data like:
-- Revenue/EPS charts
-- Price targets (graphs)
-- Valuation model tables
-- Sector comparison charts
+**Analysis Framework:**
+- **Document Type & Context**: What this is and why it was created
+- **Key Insights & Data**: Visual analysis + key numbers
+- **Market Context**: Price action, sector implications
+- **Actionability**: Noise vs. actionable intelligence
 
 **Output Format:**
 ```
-📊 equity_research_report.pdf
+**Document Type:** [Equity Research / News Article / Whitepaper]
 
-**Part 1: The "Delta" (What Changed?)**
-- Trigger: [Why this report was written]
-- Core Update: [Most important new data point]
-- Consensus Check: [Street view change or echo chamber]
+**Key Insights:**
+• [Important data point 1]
+• [Important data point 2]
+• [Important data point 3]
 
-**Part 2: Live Context Cross-Reference**
-- Price Action: [Last 5 days performance]
-- Sector Sentiment: [Sector ETF performance]
-- Fact Check: [Catalyst timeline verification]
+**Verdict:** [Noise / Monitor / Act Now]
 
-**Part 3: Key Insights & Visuals**
-- Visual Synthesis: [Analysis of key charts]
-- The Numbers: [Revenue/EPS estimates]
+**Watchlist:** [Related tickers to monitor]
 
-**Part 4: The Bottom Line**
-- Verdict: [Noise / Maintenance / Dislocation]
-- Lateral Watchlist: [Related tickers to watch]
-
-via [DTpapers](https://t.me/dtpapers/123)
+from: [Source Channel](message_link)
 
 [PDF attached]
 ```
 
-**Cost:** ~$0.001-0.002 per report
-
-**Note:** Uses Gemini's File API with multimodal capabilities to analyze the entire PDF including visual elements.
+**Cost:** ~$0.0001-0.002 per message (varies by complexity)
 
 ## Managing the Service
 
@@ -345,6 +356,52 @@ sudo systemctl restart yaronotifs
 ```
 
 ## Troubleshooting
+
+### CRITICAL: Multiple Instance Protection
+
+**Problem:** "Session is being used from another IP address!" or `AuthKeyDuplicatedError`
+
+**What This Means:**
+Telegram detected that the same session file is being used from multiple IP addresses simultaneously. This is a **serious issue** that can lead to:
+- Telegram account suspension
+- IP address bans
+- Session invalidation
+
+**Common Causes:**
+1. Running the bot on both local machine AND AWS server at the same time
+2. Running multiple instances of the bot on different servers
+3. Not properly stopping the bot before starting it elsewhere
+
+**Solution:**
+1. **Stop ALL instances** of the bot immediately:
+   ```bash
+   # On AWS server
+   sudo systemctl stop yaronotifs
+
+   # On local machine (if running)
+   # Press Ctrl+C to stop
+   ```
+
+2. **Wait 60 seconds** for Telegram to release the session
+
+3. **Only run ONE instance at a time**
+   - If testing locally, don't run on AWS
+   - If running on AWS, don't run locally
+
+4. **The bot now includes automatic protection:**
+   - Creates a lock file when starting
+   - Checks for existing lock file before connecting
+   - Prevents accidental multiple instances
+
+5. **If lock file is stuck:**
+   ```bash
+   rm yaronotifs_session.lock
+   ```
+
+**Prevention:**
+- Always use `sudo systemctl stop yaronotifs` before running locally
+- Never copy the same session file to multiple machines
+- Use the systemd service on AWS (it prevents multiple starts)
 
 ### Session File Issues
 
@@ -448,13 +505,16 @@ Typical resource usage on AWS Lightsail:
 - AWS Lightsail (1GB RAM): $3.50/month
 - Or AWS EC2 t2.micro: $8.50/month
 
-**API Costs:**
-- Pipeline A (Translation): $0
-- Pipeline B (Gemini):
-  - 100 PDFs/month: ~$0.10-0.20
-  - 500 PDFs/month: ~$0.50-1.00
+**API Costs (UnifiedPipeline):**
+- Text messages: ~$0.0001 each (Gemini Flash)
+- PDF documents: ~$0.001-0.002 each (multimodal processing)
 
-**Total:** ~$4-10/month depending on volume
+**Examples:**
+- 1000 text messages/month: ~$0.10
+- 100 PDFs/month: ~$0.10-0.20
+- Combined typical usage: ~$0.20-0.50/month
+
+**Total:** ~$4-5/month (infrastructure + API)
 
 ## Security Best Practices
 
@@ -469,20 +529,15 @@ Typical resource usage on AWS Lightsail:
 To monitor additional channels:
 
 1. Edit `config/settings.py`
-2. Add channel ID to appropriate pipeline:
+2. Add channel ID to `MONITORED_CHANNELS`:
 
 ```python
-# For translation
-self.TRANSLATOR_CHANNELS: List[int] = [
-    -1001279597711,
-    -1001526765830,
-    -1001234567890,  # New channel
-]
-
-# For analysis
-self.ANALYST_CHANNELS: List[int] = [
-    -1001750561680,
-    -1001234567890,  # New channel
+# All channels are processed through UnifiedPipeline
+self.MONITORED_CHANNELS: List[int] = [
+    -1001279597711,    # BWEnews
+    -1001526765830,    # Foresight News
+    -1001750561680,    # DTpapers
+    -1001234567890,    # Your new channel
 ]
 ```
 
@@ -491,36 +546,53 @@ self.ANALYST_CHANNELS: List[int] = [
 sudo systemctl restart yaronotifs
 ```
 
+**That's it!** The UnifiedPipeline will automatically:
+- Detect the content type (text, PDF, etc.)
+- Determine if translation is needed
+- Apply appropriate analysis
+- Format output consistently
+
 ## Extending the Bot
 
-### Adding a New Pipeline
+### Adding New Input Sources (e.g., Web Scrapers)
 
-1. Create a new pipeline class in `pipelines/`:
+The UnifiedPipeline architecture makes it easy to add new input sources:
+
+1. Create a new input source (e.g., `sources/web_scraper.py`):
 
 ```python
-from .base import BasePipeline
+from telethon.tl.types import Message
 
-class CustomPipeline(BasePipeline):
-    async def process(self, message: Message) -> bool:
-        # Your processing logic
-        pass
+async def scrape_news_site():
+    """Scrape news and create message-like objects"""
+    # Your scraping logic here
+    content = scrape_website("https://example.com/news")
+
+    # Create a message object or dict that UnifiedPipeline can process
+    # Then send to your output channel via the pipeline
+    pass
 ```
 
-2. Update `core/message_handler.py` to route messages
-
-3. Update `config/settings.py` with channel mappings
+2. The UnifiedPipeline will automatically process it like any other message
 
 ### Customizing AI Prompts
 
-Edit `services/gemini_service.py`:
+Edit `services/gemini_service.py` to customize how the LLM processes messages:
 
+**For text messages:**
 ```python
-def _build_equity_analysis_prompt(self) -> str:
-    return """Your custom prompt here...
+def _build_text_processing_prompt(self, text: str, context: dict) -> str:
+    # Customize the prompt for text processing
+    # Change tone, format, length, etc.
+    pass
+```
 
-    # Role: Senior Market Intelligence Analyst
-    ...
-    """
+**For documents:**
+```python
+def _build_document_processing_prompt(self, context: dict) -> str:
+    # Customize the prompt for document analysis
+    # Change analysis framework, output format, etc.
+    pass
 ```
 
 ## API Reference
