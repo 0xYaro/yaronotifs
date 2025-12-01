@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Environment & Session Files
+.env
+*.session
+*.session-journal
+
+# Temporary Files
+temp/
+*.pdf
+*.tmp
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+._*
+
+# Claude Code & MCP
+.claude/
+.mcp.json
+
+# Test & temporary scripts
+check_models.py
+test_local.py
+*.tar.gz
+yaronotifs.tar.gz
