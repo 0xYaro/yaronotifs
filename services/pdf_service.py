@@ -1,6 +1,6 @@
 import asyncio
 from pathlib import Path
-from typing import Optional, BinaryIO
+from typing import Optional
 import aiohttp
 
 from PyPDF2 import PdfReader

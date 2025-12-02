@@ -1,6 +1,6 @@
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -42,6 +42,55 @@ class GeminiService:
 
         logger.info(f"Gemini service initialized with model: {settings.GEMINI_MODEL}")
 
+    async def _upload_and_wait_for_file(self, file_path: Path) -> Any:
+        """
+        Upload a file to Gemini File API and wait for processing.
+
+        Args:
+            file_path: Path to the file to upload
+
+        Returns:
+            Uploaded file object ready for use
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            TimeoutError: If file processing times out
+            ValueError: If file processing fails
+        """
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        logger.info(f"Uploading file to Gemini File API: {file_path.name}")
+
+        loop = asyncio.get_event_loop()
+        uploaded_file = await loop.run_in_executor(
+            None,
+            lambda: genai.upload_file(str(file_path))
+        )
+
+        logger.info(f"File uploaded: {uploaded_file.name} ({uploaded_file.state.name})")
+
+        # Wait for file processing if needed
+        if uploaded_file.state.name == "PROCESSING":
+            max_wait = 60  # Maximum 60 seconds
+            wait_time = 0
+
+            while uploaded_file.state.name == "PROCESSING" and wait_time < max_wait:
+                await asyncio.sleep(2)
+                wait_time += 2
+                uploaded_file = await loop.run_in_executor(
+                    None,
+                    lambda: genai.get_file(uploaded_file.name)
+                )
+
+            if uploaded_file.state.name == "PROCESSING":
+                raise TimeoutError("File processing timed out")
+
+        if uploaded_file.state.name == "FAILED":
+            raise ValueError(f"File processing failed: {uploaded_file.state}")
+
+        return uploaded_file
+
     @retry_async(max_attempts=3, delay=2.0, backoff=2.0)
     async def analyze_pdf_file(self, pdf_path: Path) -> str:
         """
@@ -63,44 +112,14 @@ class GeminiService:
         Raises:
             Exception: If API call fails after retries
         """
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-
         try:
-            # Upload the PDF file to Gemini
-            logger.info(f"Uploading PDF to Gemini File API: {pdf_path.name}")
-
-            loop = asyncio.get_event_loop()
-            uploaded_file = await loop.run_in_executor(
-                None,
-                lambda: genai.upload_file(str(pdf_path))
-            )
-
-            logger.info(f"File uploaded: {uploaded_file.name} ({uploaded_file.state.name})")
-
-            # Wait for file processing if needed
-            if uploaded_file.state.name == "PROCESSING":
-                import time
-                max_wait = 60  # Maximum 60 seconds
-                wait_time = 0
-
-                while uploaded_file.state.name == "PROCESSING" and wait_time < max_wait:
-                    await asyncio.sleep(2)
-                    wait_time += 2
-                    uploaded_file = await loop.run_in_executor(
-                        None,
-                        lambda: genai.get_file(uploaded_file.name)
-                    )
-
-                if uploaded_file.state.name == "PROCESSING":
-                    raise TimeoutError("File processing timed out")
-
-            if uploaded_file.state.name == "FAILED":
-                raise ValueError(f"File processing failed: {uploaded_file.state}")
+            # Upload and wait for file processing
+            uploaded_file = await self._upload_and_wait_for_file(pdf_path)
 
             # Generate analysis using the uploaded file
             prompt = self._build_equity_analysis_prompt()
 
+            loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: self.model.generate_content([uploaded_file, prompt])
@@ -227,44 +246,14 @@ class GeminiService:
         Raises:
             Exception: If API call fails after retries
         """
-        if not file_path.exists():
-            raise FileNotFoundError(f"Document file not found: {file_path}")
-
         try:
-            # Upload the file to Gemini
-            logger.info(f"Uploading document to Gemini File API: {file_path.name}")
-
-            loop = asyncio.get_event_loop()
-            uploaded_file = await loop.run_in_executor(
-                None,
-                lambda: genai.upload_file(str(file_path))
-            )
-
-            logger.info(f"File uploaded: {uploaded_file.name} ({uploaded_file.state.name})")
-
-            # Wait for file processing if needed
-            if uploaded_file.state.name == "PROCESSING":
-                import time
-                max_wait = 60  # Maximum 60 seconds
-                wait_time = 0
-
-                while uploaded_file.state.name == "PROCESSING" and wait_time < max_wait:
-                    await asyncio.sleep(2)
-                    wait_time += 2
-                    uploaded_file = await loop.run_in_executor(
-                        None,
-                        lambda: genai.get_file(uploaded_file.name)
-                    )
-
-                if uploaded_file.state.name == "PROCESSING":
-                    raise TimeoutError("File processing timed out")
-
-            if uploaded_file.state.name == "FAILED":
-                raise ValueError(f"File processing failed: {uploaded_file.state}")
+            # Upload and wait for file processing
+            uploaded_file = await self._upload_and_wait_for_file(file_path)
 
             # Generate analysis using the uploaded file
             prompt = self._build_document_processing_prompt(context)
 
+            loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: self.model.generate_content([uploaded_file, prompt])

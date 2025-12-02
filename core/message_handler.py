@@ -66,15 +66,12 @@ class MessageHandler:
 
         This sets up event listeners that route messages to the handle_message method.
         """
-        print(f"DEBUG: register_handlers() called")
         all_channels = settings.MONITORED_CHANNELS
-        print(f"DEBUG: all_channels = {all_channels}")
 
         self.client.on_new_message(
             chat_ids=all_channels,
             handler=self.handle_message
         )
-        print(f"DEBUG: on_new_message() completed")
 
         logger.info(f"✓ Registered handlers for {len(all_channels)} channels")
         logger.info(f"  - All messages will be processed through UnifiedPipeline")
@@ -90,20 +87,17 @@ class MessageHandler:
         Args:
             message: Incoming Telegram message
         """
-        print(f"DEBUG: handle_message() called! Message received!")
         self.metrics['total_messages'] += 1
 
         try:
             # Get channel ID
             channel_id = message.chat_id if hasattr(message, 'chat_id') else None
-            print(f"DEBUG: channel_id = {channel_id}")
             if not channel_id:
                 logger.warning("Message has no chat_id, skipping")
                 return
 
             # Log message receipt
             logger.info(f"📩 New message from channel {channel_id} → UnifiedPipeline")
-            print(f"DEBUG: About to process message through UnifiedPipeline")
 
             # Create a background task for processing
             # This is the KEY to non-blocking concurrency

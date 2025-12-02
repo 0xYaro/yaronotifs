@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import List, Optional
 from telethon import TelegramClient
 from telethon.tl.types import Message
 
@@ -127,7 +127,7 @@ class BasePipeline(ABC):
             self.logger.error(f"Failed to forward to output channel: {e}")
             return False
 
-    def _split_text(self, text: str, max_length: int) -> list:
+    def _split_text(self, text: str, max_length: int) -> List[str]:
         """
         Split text into chunks at paragraph boundaries.
 

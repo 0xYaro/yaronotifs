@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
 from telethon import TelegramClient, events
 from telethon.errors import (
@@ -169,7 +169,7 @@ class TelegramClientWrapper:
         """
         return self._running and self.client.is_connected()
 
-    def on_new_message(self, chat_ids: list[int], handler: Callable):
+    def on_new_message(self, chat_ids: List[int], handler: Callable):
         """
         Register a handler for new messages from specific chats.
 
@@ -177,19 +177,11 @@ class TelegramClientWrapper:
             chat_ids: List of chat IDs to monitor
             handler: Async function to handle messages
         """
-        print(f"DEBUG: on_new_message() registering for {len(chat_ids)} chats: {chat_ids}")
-
         async def message_wrapper(event):
-            print(f"DEBUG: !!!EVENT TRIGGERED!!! Chat: {event.chat_id}, Message ID: {event.message.id}")
             try:
-                # Call handler directly (not in background task)
                 await handler(event.message)
-                print(f"DEBUG: Handler completed successfully")
             except Exception as e:
                 logger.error(f"Error in message handler: {e}", exc_info=True)
-                print(f"DEBUG: ERROR in handler: {e}")
-                import traceback
-                traceback.print_exc()
 
         # Use add_event_handler instead of decorator - works better with running clients
         self.client.add_event_handler(
@@ -198,7 +190,6 @@ class TelegramClientWrapper:
         )
 
         self._message_handlers.append(message_wrapper)
-        print(f"DEBUG: Handler registered successfully for chats: {chat_ids}")
         logger.info(f"Registered message handler for {len(chat_ids)} chat(s)")
 
     async def run_until_disconnected(self):
@@ -240,7 +231,7 @@ class TelegramClientWrapper:
                 except Exception as reconnect_error:
                     logger.error(f"Reconnection failed: {reconnect_error}")
 
-    async def send_message(self, user_id: str, text: str, **kwargs):
+    async def send_message(self, user_id: str, text: str, **kwargs) -> Message:
         """
         Send a message to a user or channel.
 
@@ -248,10 +239,13 @@ class TelegramClientWrapper:
             user_id: Target user ID (positive), channel ID (negative, e.g., -100...), or username
             text: Message text
             **kwargs: Additional arguments for send_message
+
+        Returns:
+            The sent message
         """
         return await self.client.send_message(user_id, text, **kwargs)
 
-    async def send_file(self, user_id: str, file, **kwargs):
+    async def send_file(self, user_id: str, file, **kwargs) -> Message:
         """
         Send a file to a user or channel.
 
@@ -259,16 +253,22 @@ class TelegramClientWrapper:
             user_id: Target user ID (positive), channel ID (negative, e.g., -100...), or username
             file: File path or file object
             **kwargs: Additional arguments for send_file
+
+        Returns:
+            The sent message
         """
         return await self.client.send_file(user_id, file, **kwargs)
 
-    async def download_media(self, message: Message, file: str):
+    async def download_media(self, message: Message, file: str) -> Optional[str]:
         """
         Download media from a message.
 
         Args:
             message: Telegram message
             file: Target file path
+
+        Returns:
+            Path to downloaded file or None if download failed
         """
         return await self.client.download_media(message, file=file)
 
@@ -286,36 +286,47 @@ class TelegramClientWrapper:
             # Read lock file to get PID and timestamp
             with open(self.lock_file, 'r') as f:
                 data = f.read().strip().split('\n')
-                if len(data) >= 2:
-                    pid = int(data[0])
-                    timestamp = float(data[1])
+                if len(data) < 2:
+                    self._remove_stale_lock("Invalid lock file format")
+                    return False
 
-                    # Check if the process is still running
-                    try:
-                        os.kill(pid, 0)  # Signal 0 just checks if process exists
-                        # Process exists
-                        age_hours = (time.time() - timestamp) / 3600
-                        if age_hours > 24:
-                            # Stale lock file (older than 24 hours), remove it
-                            logger.warning(f"Removing stale lock file (age: {age_hours:.1f} hours)")
-                            self.lock_file.unlink()
-                            return False
-                        return True
-                    except ProcessLookupError:
-                        # Process doesn't exist, remove stale lock file
-                        logger.warning("Removing lock file from dead process")
-                        self.lock_file.unlink()
+                pid = int(data[0])
+                timestamp = float(data[1])
+
+                # Check if the process is still running
+                try:
+                    os.kill(pid, 0)  # Signal 0 just checks if process exists
+                    # Process exists - check if lock is stale
+                    age_hours = (time.time() - timestamp) / 3600
+                    if age_hours > 24:
+                        self._remove_stale_lock(f"age: {age_hours:.1f} hours")
                         return False
+                    return True
+                except ProcessLookupError:
+                    # Process doesn't exist
+                    self._remove_stale_lock("Process no longer running")
+                    return False
+
+        except (ValueError, IndexError) as e:
+            self._remove_stale_lock(f"Invalid lock file data: {e}")
+            return False
         except Exception as e:
             logger.warning(f"Error checking lock file: {e}")
-            # If we can't read the lock file, remove it
-            try:
-                self.lock_file.unlink()
-            except:
-                pass
+            self._remove_stale_lock(f"Error: {e}")
             return False
 
-        return False
+    def _remove_stale_lock(self, reason: str) -> None:
+        """
+        Remove a stale lock file.
+
+        Args:
+            reason: Reason for removal
+        """
+        logger.warning(f"Removing stale lock file ({reason})")
+        try:
+            self.lock_file.unlink()
+        except Exception as e:
+            logger.error(f"Failed to remove stale lock file: {e}")
 
     def _create_lock_file(self):
         """
