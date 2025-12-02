@@ -301,20 +301,26 @@ class GeminiService:
 
 **Instructions:**
 1. **Translate** the Chinese text to English (if present)
-2. **Summarize** the key points in bullet format
-3. **Extract** any actionable insights, market movements, or important announcements
-4. **Format** for readability on Telegram (use markdown)
-
-**Content Type Detection:**
-- If this is breaking news, mark it as "🚨 BREAKING"
-- If this mentions specific tokens/stocks, highlight them
-- If there are numbers/data, preserve them accurately
+2. **Extract** the most critical facts and numbers only
+3. **Format** exactly as specified below
 
 **Output Format:**
-[Translated and summarized content in clear, concise English]
+**Headline:** [One bold sentence summarizing the key news]
 
-**Tone:** Professional, objective, data-focused
-**Length:** 200-400 words maximum
+• [Key point 1 with specific data/numbers]
+• [Key point 2 with specific data/numbers]
+• [Key point 3 - only if essential]
+
+**Rules:**
+- Start with a bold headline sentence (max 15 words)
+- Use bullet points (•) for key facts
+- Include specific numbers, amounts, dates, valuations
+- NO fluff or background context - facts only
+- Maximum 3 bullet points
+- Be direct and factual
+
+**Tone:** Telegraph-style brevity - no fluff
+**Length:** 100-150 words maximum
 
 ---
 
@@ -330,21 +336,26 @@ class GeminiService:
 **Task:** Process the following message for a professional investor.
 
 **Instructions:**
-1. **Summarize** the key points in bullet format
-2. **Extract** any actionable insights, market movements, or important announcements
-3. **Highlight** any critical data points or numbers
-4. **Format** for readability on Telegram (use markdown)
-
-**Content Type Detection:**
-- If this is breaking news, mark it as "🚨 BREAKING"
-- If this mentions specific tokens/stocks, highlight them
-- If there are numbers/data, preserve them accurately
+1. **Extract** the most critical facts and numbers only
+2. **Format** exactly as specified below
 
 **Output Format:**
-[Summarized content in clear, concise format]
+**Headline:** [One bold sentence summarizing the key news]
 
-**Tone:** Professional, objective, data-focused
-**Length:** 200-400 words maximum
+• [Key point 1 with specific data/numbers]
+• [Key point 2 with specific data/numbers]
+• [Key point 3 - only if essential]
+
+**Rules:**
+- Start with a bold headline sentence (max 15 words)
+- Use bullet points (•) for key facts
+- Include specific numbers, amounts, dates, valuations
+- NO fluff or background context - facts only
+- Maximum 3 bullet points
+- Be direct and factual
+
+**Tone:** Telegraph-style brevity - no fluff
+**Length:** 100-150 words maximum
 
 ---
 
