@@ -184,9 +184,10 @@ class TelegramClientWrapper:
                 logger.error(f"Error in message handler: {e}", exc_info=True)
 
         # Use add_event_handler instead of decorator - works better with running clients
+        # Note: incoming=True removed to allow testing with own messages
         self.client.add_event_handler(
             message_wrapper,
-            events.NewMessage(chats=chat_ids, incoming=True)
+            events.NewMessage(chats=chat_ids)
         )
 
         self._message_handlers.append(message_wrapper)
