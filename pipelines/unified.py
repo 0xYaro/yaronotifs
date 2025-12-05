@@ -332,12 +332,15 @@ from: {via_source}"""
         Returns:
             bool: True if successful
         """
+        import time
+        start_time = time.time()
+
         try:
             text = source_msg.text
             if not text:
                 return False
 
-            self.logger.info(f"Processing text from {source_msg.source_name} ({len(text)} chars)")
+            self.logger.info(f"⏱️ [TIMING] Processing text from {source_msg.source_name} ({len(text)} chars)")
 
             # Detect if Chinese text is present
             has_chinese = detect_chinese(text)
@@ -352,23 +355,37 @@ from: {via_source}"""
             }
 
             # Process with LLM
+            llm_start = time.time()
+            self.logger.info(f"⏱️ [TIMING] Calling Gemini API...")
             processed_content = await self.gemini.process_text_message(
                 text=text,
                 context=context
             )
+            llm_time = time.time() - llm_start
+            self.logger.info(f"⏱️ [TIMING] Gemini API call took {llm_time:.2f}s")
 
             if not processed_content:
                 self.logger.warning("LLM returned empty response")
                 return False
 
             # Format output
+            format_start = time.time()
             formatted_message = self._format_source_output(
                 content=processed_content,
                 source_msg=source_msg,
                 content_type="text"
             )
+            format_time = time.time() - format_start
 
-            return await self.forward_to_target(formatted_message)
+            # Forward to target
+            forward_start = time.time()
+            result = await self.forward_to_target(formatted_message)
+            forward_time = time.time() - forward_start
+
+            total_time = time.time() - start_time
+            self.logger.info(f"⏱️ [TIMING] Text processing complete: LLM={llm_time:.2f}s, Format={format_time:.2f}s, Forward={forward_time:.2f}s, Total={total_time:.2f}s")
+
+            return result
 
         except Exception as e:
             self.logger.error(f"Error processing source text: {e}", exc_info=True)

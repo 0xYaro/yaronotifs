@@ -88,9 +88,22 @@ class TelegramSource(BaseSource):
 
         Converts Telegram message to SourceMessage and queues it.
         """
+        import time
+        start_time = time.time()
+
         try:
+            logger.info(f"⏱️ [TIMING] Event triggered for message {message.id} from chat {message.chat_id}")
+
+            convert_start = time.time()
             source_message = await self._convert_telegram_message(message)
+            convert_time = time.time() - convert_start
+
+            logger.info(f"⏱️ [TIMING] Message conversion took {convert_time:.2f}s")
+
             await self.message_queue.put(source_message)
+
+            total_time = time.time() - start_time
+            logger.info(f"⏱️ [TIMING] Total event handling took {total_time:.2f}s")
         except Exception as e:
             logger.error(f"Error converting Telegram message: {e}", exc_info=True)
 

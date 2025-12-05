@@ -200,10 +200,20 @@ async def main():
         Args:
             source_message: SourceMessage from any registered source
         """
+        import time
+        start_time = time.time()
+
         try:
+            logger.info(f"⏱️ [TIMING] Starting pipeline processing for message from {source_message.source_name}")
+
+            pipeline_start = time.time()
             success = await pipeline.process(source_message)
+            pipeline_time = time.time() - pipeline_start
+
+            total_time = time.time() - start_time
+
             if success:
-                logger.info(f"✓ Processed message from {source_message.source_name}")
+                logger.info(f"✓ Processed message from {source_message.source_name} | Pipeline: {pipeline_time:.2f}s | Total: {total_time:.2f}s")
             else:
                 logger.warning(f"✗ Failed to process message from {source_message.source_name}")
         except Exception as e:
