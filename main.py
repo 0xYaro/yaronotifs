@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Market Intelligence Aggregator & Router
+Market Intelligence Aggregator & Router - Modular Architecture
 
-Main application entry point for the Telegram intelligence bot.
+Main application entry point for the modular intelligence bot.
 
-This bot:
-1. Monitors specific Telegram channels for market intelligence
-2. Processes messages using two pipelines:
-   - Pipeline A: Chinese news translation (BWEnews, Foresight News)
-   - Pipeline B: PDF research report analysis (DTpapers - equities market research)
-3. Forwards processed intelligence to your main Telegram account
+This bot uses a modular source architecture that allows easy integration of:
+- Telegram channels (existing)
+- RSS feeds (new)
+- Web scrapers (new)
+- REST APIs (new)
+- Custom sources (easy to add)
+
+All sources are processed through a unified LLM-powered pipeline.
 
 Usage:
     python main.py
@@ -25,7 +27,9 @@ import sys
 from pathlib import Path
 
 from config import settings
-from core import TelegramClientWrapper, MessageHandler
+from sources import SourceRegistry, TelegramSource
+from pipelines import UnifiedPipeline
+from services import StatusReporter
 from utils import setup_logger, get_logger
 
 
@@ -75,7 +79,7 @@ async def health_checks() -> bool:
 
 async def main():
     """
-    Main application loop.
+    Main application loop - Modular Source Architecture.
     """
     global logger
 
@@ -84,6 +88,7 @@ async def main():
 
     logger.info("=" * 60)
     logger.info("MARKET INTELLIGENCE AGGREGATOR & ROUTER")
+    logger.info("Modular Source Architecture")
     logger.info("=" * 60)
     logger.info("")
 
@@ -93,53 +98,143 @@ async def main():
         return 1
 
     logger.info("")
-    logger.info("Initializing Telegram client...")
+    logger.info("Initializing modular source registry...")
 
-    # Initialize Telegram client
-    telegram_client = TelegramClientWrapper()
+    # ========================================
+    # Initialize Source Registry
+    # ========================================
+    registry = SourceRegistry()
 
-    # Start client
-    if not await telegram_client.start():
-        logger.error("Failed to start Telegram client. Exiting.")
-        return 1
+    # ========================================
+    # Register Telegram Source
+    # ========================================
+    # This wraps your existing Telegram monitoring in the modular architecture.
+    # The TelegramSource will monitor channels specified in config/settings.py
+    # and convert Telegram messages to SourceMessage format.
+    telegram_source = TelegramSource(
+        name="Telegram Channels",
+        source_id="telegram",
+        monitored_channels=settings.MONITORED_CHANNELS
+    )
+    registry.register(telegram_source)
 
-    # Refresh dialog cache to learn channel IDs
-    logger.info("Refreshing Dialog Cache...")
-    await telegram_client.client.get_dialogs()
+    # ========================================
+    # Register Additional Sources (Optional)
+    # ========================================
+    # 🎯 ADD YOUR NEW SOURCES HERE!
+    #
+    # The modular architecture makes it easy to add any information source.
+    # Just uncomment the examples below or create your own.
+    #
+    # Pattern:
+    #   1. Import the source type
+    #   2. Create an instance with your config
+    #   3. Register it with registry.register(source)
+    #
+    # See ADDING_NEW_SOURCES.md for detailed examples and templates.
+    # See QUICK_REFERENCE.md for copy-paste snippets.
+    #
+    # Uncomment and configure additional sources as needed:
+
+    # Example: Add an RSS feed
+    # from sources.examples import RSSSource
+    # rss_source = RSSSource(
+    #     name="CoinDesk",
+    #     feed_url="https://www.coindesk.com/arc/outboundfeeds/rss/",
+    #     poll_interval_minutes=20
+    # )
+    # registry.register(rss_source)
+
+    # Example: Add trending crypto tracker
+    # from sources.examples import CoinGeckoTrendingSource
+    # trending_source = CoinGeckoTrendingSource()
+    # registry.register(trending_source)
+
+    # Example: Add a web scraper
+    # from sources.examples import WebScraperSource
+    # scraper = WebScraperSource(
+    #     name="Example News Site",
+    #     url="https://example.com/news",
+    #     css_selector=".article",
+    #     scrape_interval_minutes=30
+    # )
+    # registry.register(scraper)
 
     logger.info("")
-    logger.info("Setting up message handlers...")
+    logger.info("Starting all registered sources...")
 
-    # Initialize and register message handler
-    message_handler = MessageHandler(telegram_client)
-    message_handler.register_handlers()
+    # Start all sources
+    if not await registry.start_all():
+        logger.error("Failed to start sources. Exiting.")
+        return 1
 
+    # ========================================
+    # Initialize Unified Pipeline
+    # ========================================
+    logger.info("")
+    logger.info("Initializing unified processing pipeline...")
+
+    # Get Telegram client for output (we need it for sending messages)
+    telegram_client = telegram_source.client.client
+
+    pipeline = UnifiedPipeline(
+        client=telegram_client,
+        output_channel_id=settings.OUTPUT_CHANNEL_ID
+    )
+
+    # ========================================
+    # Initialize Status Reporter
+    # ========================================
+    status_reporter = StatusReporter(
+        client=telegram_client,
+        status_destination_id=settings.STATUS_DESTINATION_ID
+    )
+
+    # ========================================
+    # Define Message Handler
+    # ========================================
+    async def process_message(source_message):
+        """
+        Process a message from any source through the unified pipeline.
+
+        Args:
+            source_message: SourceMessage from any registered source
+        """
+        try:
+            success = await pipeline.process(source_message)
+            if success:
+                logger.info(f"✓ Processed message from {source_message.source_name}")
+            else:
+                logger.warning(f"✗ Failed to process message from {source_message.source_name}")
+        except Exception as e:
+            logger.error(f"Error processing message from {source_message.source_name}: {e}", exc_info=True)
+            await status_reporter.report_error(
+                error_type="Pipeline Exception",
+                error_message=str(e),
+                context={"source": source_message.source_name}
+            )
+
+    # ========================================
+    # Start Processing
+    # ========================================
     logger.info("")
     logger.info("=" * 60)
     logger.info("✓ BOT IS RUNNING")
     logger.info("=" * 60)
     logger.info("")
-    logger.info(f"Architecture: Unified Pipeline (LLM-powered)")
-    logger.info(f"Monitoring {len(settings.MONITORED_CHANNELS)} channels:")
-    for channel_id in settings.MONITORED_CHANNELS:
-        logger.info(f"  • Channel: {channel_id}")
+    logger.info(f"Architecture: Modular Source Registry + Unified Pipeline")
+    logger.info(f"Active sources: {len(registry.list_sources())}")
+    for source_id in registry.list_sources():
+        source = registry.get_source(source_id)
+        logger.info(f"  • {source.name} (ID: {source_id})")
     logger.info("")
-    logger.info("All messages processed through UnifiedPipeline")
+    logger.info("All messages processed through UnifiedPipeline with LLM intelligence")
     logger.info("Press Ctrl+C to stop")
     logger.info("")
 
-    # Send startup notification to status channel
-    await message_handler.status_reporter.report_startup(
+    # Send startup notification
+    await status_reporter.report_startup(
         monitored_channels=len(settings.MONITORED_CHANNELS)
-    )
-
-    # Start periodic status updates (every 4 hours)
-    async def get_metrics():
-        return message_handler.get_metrics()
-
-    await message_handler.status_reporter.start_periodic_updates(
-        metrics_callback=get_metrics,
-        interval_hours=4
     )
 
     # Setup graceful shutdown
@@ -154,11 +249,16 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        # Run until shutdown signal
-        await asyncio.gather(
-            telegram_client.run_until_disconnected(),
-            shutdown_event.wait()
+        # Start message processing and wait for shutdown
+        processing_task = asyncio.create_task(
+            registry.process_messages(process_message)
         )
+
+        # Wait for shutdown signal
+        await shutdown_event.wait()
+
+        # Cancel processing
+        processing_task.cancel()
 
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
@@ -166,16 +266,13 @@ async def main():
     finally:
         logger.info("Shutting down...")
 
-        # Cleanup
-        await telegram_client.stop()
+        # Stop all sources
+        await registry.stop_all()
 
-        # Print final metrics
-        metrics = message_handler.get_metrics()
-        logger.info("")
-        logger.info("Final Statistics:")
-        logger.info(f"  Total Messages: {metrics['total_messages']}")
-        logger.info(f"  Successfully Processed: {metrics['processed']}")
-        logger.info(f"  Errors: {metrics['errors']}")
+        # Health check one last time
+        health = await registry.health_check()
+        logger.info(f"Final health check: {health}")
+
         logger.info("")
         logger.info("Goodbye!")
 

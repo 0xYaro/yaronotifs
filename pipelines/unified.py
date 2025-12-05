@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from telethon.tl.types import Message
 
 from .base import BasePipeline
+from sources.base import SourceMessage
 from services import GeminiService, PDFService
 from utils import detect_chinese
 
@@ -35,7 +36,7 @@ class UnifiedPipeline(BasePipeline):
         self.pdf_service = PDFService()
         self.logger.info("UnifiedPipeline initialized with Gemini service")
 
-    async def process(self, message: Message) -> bool:
+    async def process(self, message: Union[Message, SourceMessage]) -> bool:
         """
         Process any incoming message through the unified pipeline.
 
@@ -51,12 +52,17 @@ class UnifiedPipeline(BasePipeline):
         4. Format and forward unified output
 
         Args:
-            message: Incoming message from any source
+            message: Incoming message from any source (Telegram Message or SourceMessage)
 
         Returns:
             bool: True if processing succeeded, False otherwise
         """
         try:
+            # Handle SourceMessage objects (new modular architecture)
+            if isinstance(message, SourceMessage):
+                return await self._process_source_message(message)
+
+            # Handle legacy Telegram Message objects (backward compatibility)
             # Check for PDF document first
             if message.document:
                 return await self._process_document(message)
@@ -280,6 +286,168 @@ class UnifiedPipeline(BasePipeline):
             str: Formatted message in Markdown
         """
         via_source = self._format_via_source(message)
+
+        return f"""{content}
+
+from: {via_source}"""
+
+    # ========================================
+    # Modular Source Architecture Support
+    # ========================================
+
+    async def _process_source_message(self, source_msg: SourceMessage) -> bool:
+        """
+        Process a SourceMessage from the modular source architecture.
+
+        This method adapts SourceMessage objects to the existing pipeline logic.
+        It handles all source types: Telegram, RSS, web scrapers, APIs, etc.
+
+        Args:
+            source_msg: SourceMessage from any registered source
+
+        Returns:
+            bool: True if successful
+        """
+        try:
+            # Route based on content type
+            if source_msg.has_document():
+                return await self._process_source_document(source_msg)
+            elif source_msg.has_text():
+                return await self._process_source_text(source_msg)
+            else:
+                self.logger.debug(f"SourceMessage from {source_msg.source_name} has no processable content")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error processing SourceMessage from {source_msg.source_name}: {e}", exc_info=True)
+            return False
+
+    async def _process_source_text(self, source_msg: SourceMessage) -> bool:
+        """
+        Process text content from a SourceMessage.
+
+        Args:
+            source_msg: SourceMessage with text content
+
+        Returns:
+            bool: True if successful
+        """
+        try:
+            text = source_msg.text
+            if not text:
+                return False
+
+            self.logger.info(f"Processing text from {source_msg.source_name} ({len(text)} chars)")
+
+            # Detect if Chinese text is present
+            has_chinese = detect_chinese(text)
+
+            # Build context for LLM
+            context = {
+                "source_channel": source_msg.source_name,
+                "channel_id": source_msg.source_id,
+                "has_chinese": has_chinese,
+                "message_link": source_msg.url,
+                "metadata": source_msg.metadata
+            }
+
+            # Process with LLM
+            processed_content = await self.gemini.process_text_message(
+                text=text,
+                context=context
+            )
+
+            if not processed_content:
+                self.logger.warning("LLM returned empty response")
+                return False
+
+            # Format output
+            formatted_message = self._format_source_output(
+                content=processed_content,
+                source_msg=source_msg,
+                content_type="text"
+            )
+
+            return await self.forward_to_target(formatted_message)
+
+        except Exception as e:
+            self.logger.error(f"Error processing source text: {e}", exc_info=True)
+            return False
+
+    async def _process_source_document(self, source_msg: SourceMessage) -> bool:
+        """
+        Process document content from a SourceMessage.
+
+        Args:
+            source_msg: SourceMessage with document attachment
+
+        Returns:
+            bool: True if successful
+        """
+        try:
+            if not source_msg.document_path:
+                self.logger.warning("SourceMessage has no document_path")
+                return False
+
+            self.logger.info(f"Processing document from {source_msg.source_name}: {source_msg.document_path.name}")
+
+            # Check if it's a PDF
+            if source_msg.document_mime_type != 'application/pdf':
+                self.logger.debug(f"Not a PDF: {source_msg.document_mime_type}, skipping")
+                return False
+
+            # Build context
+            context = {
+                "source_channel": source_msg.source_name,
+                "channel_id": source_msg.source_id,
+                "has_chinese": False,
+                "message_link": source_msg.url,
+                "metadata": source_msg.metadata
+            }
+
+            # Process with LLM
+            processed_content = await self.gemini.process_document(
+                file_path=source_msg.document_path,
+                context=context
+            )
+
+            if not processed_content:
+                self.logger.warning("LLM returned empty response for document")
+                return False
+
+            # Format output
+            formatted_message = self._format_source_output(
+                content=processed_content,
+                source_msg=source_msg,
+                content_type="document"
+            )
+
+            # Forward with document attached
+            success = await self.forward_to_target(
+                text=formatted_message,
+                file_path=str(source_msg.document_path)
+            )
+
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Error processing source document: {e}", exc_info=True)
+            return False
+
+    def _format_source_output(self, content: str, source_msg: SourceMessage, content_type: str) -> str:
+        """
+        Format processed content from a SourceMessage.
+
+        Args:
+            content: Processed content from LLM
+            source_msg: Original SourceMessage
+            content_type: Type of content ("text" or "document")
+
+        Returns:
+            str: Formatted message in Markdown
+        """
+        # Use SourceMessage's built-in link formatting
+        via_source = source_msg.get_source_link()
 
         return f"""{content}
 

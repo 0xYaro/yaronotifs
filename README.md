@@ -1,6 +1,29 @@
 # Market Intelligence Aggregator & Router
 
-A production-ready Telegram intelligence bot that monitors market intelligence channels, processes messages through an AI-powered unified pipeline, and forwards curated intelligence to your main account.
+A production-ready modular intelligence bot that monitors multiple information sources (Telegram, RSS, web scrapers, APIs), processes all content through an AI-powered pipeline, and forwards curated intelligence to your Telegram channel.
+
+---
+
+## 📚 Documentation
+
+**🎯 New to this project?** → **[START HERE](START_HERE.md)** (5-minute overview)
+
+| Document | Purpose | When to Use |
+|----------|---------|-------------|
+| **[START_HERE.md](START_HERE.md)** ⭐ | Quick onboarding & overview | First time, need context |
+| **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** ⭐ | Copy-paste examples & commands | Daily usage, adding sources |
+| **[ADDING_NEW_SOURCES.md](ADDING_NEW_SOURCES.md)** | Detailed source integration guide | Adding RSS/scrapers/APIs |
+| **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** | Complete doc navigation | Finding specific info |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Legacy → modular migration | Upgrading from old version |
+| **[MODULAR_ARCHITECTURE_COMPLETE.md](MODULAR_ARCHITECTURE_COMPLETE.md)** | Technical deep dive | Understanding internals |
+
+**Quick Links:**
+- 🚀 [Run the bot](START_HERE.md#quick-start-3-steps)
+- ➕ [Add an RSS feed](QUICK_REFERENCE.md#add-rss-feed)
+- 🌐 [Add a web scraper](QUICK_REFERENCE.md#add-web-scraper)
+- 🔧 [Troubleshooting](QUICK_REFERENCE.md#troubleshooting)
+
+---
 
 ## Overview
 
@@ -45,37 +68,77 @@ This bot acts as a "man-in-the-middle" automation system that:
 ```
 yaronotifs/
 ├── config/              # Configuration management
-├── core/                # Telegram client wrapper & message routing
+├── sources/             # Modular source providers (NEW)
+│   ├── base.py          # BaseSource interface & SourceMessage
+│   ├── registry.py      # SourceRegistry for managing sources
+│   ├── telegram_source.py  # Telegram channel source
+│   └── examples/        # Example source implementations
+│       ├── rss_source.py        # RSS feed source
+│       ├── webscraper_source.py # Web scraper source
+│       └── api_source.py        # REST API source
+├── core/                # Telegram client wrapper
 ├── pipelines/           # Message processing pipelines
 │   ├── base.py          # Base pipeline class
-│   ├── unified.py       # Unified AI-powered pipeline (NEW)
-│   ├── translator.py    # Legacy: Chinese translation
-│   └── analyst.py       # Legacy: PDF analysis
+│   └── unified.py       # Unified AI-powered pipeline with SourceMessage support
 ├── services/            # External service integrations
 │   ├── gemini_service.py   # Google Gemini API with intelligent routing
 │   └── pdf_service.py      # PDF download & extraction
 ├── utils/               # Logging, helpers, retry logic
 ├── scripts/             # Setup and utility scripts
-├── main.py              # Application entry point
+├── main.py              # Modular source architecture entry point
+├── main_legacy.py       # Legacy direct Telegram approach (backup)
 └── requirements.txt
 ```
 
-### New Unified Architecture
+### Modular Source Architecture
 
-All incoming messages now flow through a **single UnifiedPipeline** that uses Gemini to:
+The bot now uses a **modular source architecture** that makes it trivial to add new information sources:
 
-1. **Detect content type** (text, PDF, image, etc.)
-2. **Identify language** and translate if needed
-3. **Extract key insights** through intelligent summarization
-4. **Analyze documents** with multimodal capabilities (text + visuals)
-5. **Format output** consistently for all message types
+```
+┌─────────────────────────────────────────────────┐
+│         Source Registry                         │
+│  (Manages all information sources)              │
+└────────┬────────────────────────────────────────┘
+         │
+         ├─── TelegramSource (Telegram channels)
+         ├─── RSSSource (RSS feeds)
+         ├─── WebScraperSource (Web scraping)
+         ├─── APISource (REST APIs)
+         └─── [Your Custom Source]
+                     │
+                     ▼
+         ┌───────────────────────┐
+         │   SourceMessage       │
+         │  (Standardized)       │
+         └───────────┬───────────┘
+                     │
+                     ▼
+         ┌───────────────────────┐
+         │   UnifiedPipeline     │
+         │  (LLM Processing)     │
+         └───────────┬───────────┘
+                     │
+                     ▼
+         ┌───────────────────────┐
+         │  Output Channel       │
+         │  (Telegram)           │
+         └───────────────────────┘
+```
+
+**Key Components:**
+1. **BaseSource** - Abstract interface all sources implement
+2. **SourceMessage** - Standardized message format across all sources
+3. **SourceRegistry** - Manages and multiplexes messages from all sources
+4. **UnifiedPipeline** - Processes all messages with LLM intelligence
 
 **Benefits:**
-- Simpler codebase (one pipeline instead of multiple)
-- More intelligent processing (LLM makes contextual decisions)
-- Easier to extend (add new sources like web scrapers)
-- Consistent output format
-- Better error handling
+- **Modular**: Add new sources without touching existing code
+- **Flexible**: Support any data source (feeds, APIs, scrapers, webhooks)
+- **Consistent**: All sources processed through same LLM pipeline
+- **Maintainable**: Clear separation of concerns
+- **Extensible**: Easy for users or AI to add new sources
+
+See [ADDING_NEW_SOURCES.md](ADDING_NEW_SOURCES.md) for complete documentation on adding sources.
 
 ## Prerequisites
 
@@ -278,29 +341,43 @@ from: [Source Channel](message_link)
 4. Provides contextual market analysis
 5. Extracts actionable intelligence
 
-**Analysis Framework:**
-- **Document Type & Context**: What this is and why it was created
-- **Key Insights & Data**: Visual analysis + key numbers
-- **Market Context**: Price action, sector implications
-- **Actionability**: Noise vs. actionable intelligence
-
 **Output Format:**
 ```
-**Document Type:** [Equity Research / News Article / Whitepaper]
+🔴 **NVIDIA - COVERAGE**
 
-**Key Insights:**
-• [Important data point 1]
-• [Important data point 2]
-• [Important data point 3]
+**Summary**
+[2-3 sentence executive summary of the report and key insight]
 
-**Verdict:** [Noise / Monitor / Act Now]
+**Investment Thesis**
+• [Core bull/bear case point 1]
+• [Core bull/bear case point 2]
+• [Core bull/bear case point 3]
 
-**Watchlist:** [Related tickers to monitor]
+**Key Data & Visual Insights**
+• [Critical data point with numbers]
+• [Chart insight - story it tells]
+• [Valuation metrics]
+
+**Catalysts & Timeline**
+• **Near-term (0-3 months):** [Upcoming events]
+• **Medium-term (3-12 months):** [Structural changes]
+
+**Risk Factors**
+• [Key downside risk 1]
+• [Key downside risk 2]
+
+**Sector Context**
+[Broader market/sector trends and peer implications]
 
 from: [Source Channel](message_link)
 
 [PDF attached]
 ```
+
+**Priority Labels:**
+- 🔴 = ACTIONABLE (requires immediate attention)
+- 🟡 = MONITOR (track developments)
+- ⚪ = NOISE (informational only)
 
 **Cost:** ~$0.0001-0.002 per message (varies by complexity)
 
@@ -554,26 +631,48 @@ sudo systemctl restart yaronotifs
 
 ## Extending the Bot
 
-### Adding New Input Sources (e.g., Web Scrapers)
+### Adding New Input Sources (RSS, Web Scrapers, APIs, etc.)
 
-The UnifiedPipeline architecture makes it easy to add new input sources:
+The bot now features a **modular source architecture** that makes it incredibly easy to add new information sources alongside Telegram channels.
 
-1. Create a new input source (e.g., `sources/web_scraper.py`):
+**📖 See [ADDING_NEW_SOURCES.md](ADDING_NEW_SOURCES.md) for complete documentation**
+
+#### Quick Example: Add an RSS Feed
 
 ```python
-from telethon.tl.types import Message
+from sources.examples import RSSSource
+from sources import SourceRegistry
 
-async def scrape_news_site():
-    """Scrape news and create message-like objects"""
-    # Your scraping logic here
-    content = scrape_website("https://example.com/news")
+# Initialize registry
+registry = SourceRegistry()
 
-    # Create a message object or dict that UnifiedPipeline can process
-    # Then send to your output channel via the pipeline
-    pass
+# Add Telegram (existing)
+telegram_source = TelegramSource(monitored_channels=[...])
+registry.register(telegram_source)
+
+# Add RSS feed (new!)
+rss_source = RSSSource(
+    name="TechCrunch",
+    feed_url="https://techcrunch.com/feed/",
+    poll_interval_minutes=15
+)
+registry.register(rss_source)
+
+# Start all sources
+await registry.start_all()
+
+# Process all messages through unified pipeline
+await registry.process_messages(message_handler)
 ```
 
-2. The UnifiedPipeline will automatically process it like any other message
+**Available Source Templates:**
+- ✅ **RSSSource** - Any RSS/Atom feed
+- ✅ **WebScraperSource** - Web page scraping with CSS selectors
+- ✅ **APISource** - REST API polling
+- ✅ **CoinGeckoTrendingSource** - Pre-built trending crypto tracker
+- 🔧 **BaseSource** - Create custom sources
+
+All sources are processed through the same LLM-powered UnifiedPipeline with consistent formatting!
 
 ### Customizing AI Prompts
 

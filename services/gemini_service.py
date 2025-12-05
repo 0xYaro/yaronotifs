@@ -387,38 +387,53 @@ class GeminiService:
 
 ---
 
-## Analysis Framework:
+**Output Format:**
 
-### **Part 1: Document Type & Context**
-* **Document Type:** Identify what this is (equity research report, news article, whitepaper, presentation, etc.)
-* **The Trigger:** Why was this document created? (Earnings, M&A, product launch, analyst day, etc.)
-* **The Core Update:** What is the single most important new information in this document?
-
-### **Part 2: Key Insights & Data**
-* **Visual Analysis:** Analyze any charts, graphs, tables, or visual elements. What story do they tell?
-* **The Numbers:** Extract key data points (revenue, growth rates, estimates, valuations, etc.)
-* **Consensus Check:** Does this align with or contradict prevailing market sentiment?
-
-### **Part 3: Market Context** (if applicable)
-* **Price Action Relevance:** Consider recent market movements related to this content
-* **Sector Implications:** What does this mean for the broader sector/industry?
-* **Cross-References:** What other companies/assets should we monitor based on this?
-
-### **Part 4: Actionability**
-* **Verdict:** Is this "Noise" (ignore), "Maintenance" (monitor), or "Dislocation" (act now)?
-* **Key Takeaways:** 3-5 bullet points of what matters most
-* **Watchlist:** Related tickers/assets to monitor
+🔴 or 🟡 or ⚪ **[COMPANY/ASSET/INDUSTRY] - [REPORT TYPE]**
+*Where: 🔴 = ACTIONABLE | 🟡 = MONITOR | ⚪ = NOISE*
+*Report Type: COVERAGE (ongoing coverage) or PITCH (new idea/trade)*
 
 ---
 
-**Output Requirements:**
-- Use markdown formatting for readability on Telegram
-- Include bullet points for easy scanning
-- Highlight critical data with **bold**
-- Keep total length to 400-600 words
-- Be objective, cynical, and data-first
+**Summary** (2-3 sentences maximum)
+[Quick thesis overview + most critical new insight from this report]
 
-**Tone:** Professional, analytical, actionable
+**Investment Thesis** *(if report contains clear investment view)*
+• [Core bull/bear case point 1]
+• [Core bull/bear case point 2]
+• [Core bull/bear case point 3]
+
+**Key Data & Visual Insights** *(if charts/tables/data present)*
+• [Critical data point 1 with specific numbers]
+• [Chart insight - what story does it tell?]
+• [Table/model insight - key takeaway]
+• [Valuation metrics if provided]
+
+**Catalysts & Timeline** *(if discussed in report)*
+• **Near-term (0-3 months):** [Upcoming events/triggers]
+• **Medium-term (3-12 months):** [Structural changes/milestones]
+
+**Risk Factors** *(if highlighted)*
+• [Key downside risk 1]
+• [Key downside risk 2]
+
+**Sector Context**
+[How does this fit broader market/sector trends? Peer implications?]
+
+---
+
+**Critical Instructions:**
+- Start with ONLY the label emoji (🔴 or 🟡 or ⚪) followed by the company/asset and report type
+- Do NOT write out "ACTIONABLE" or "MONITOR" or "NOISE" - just use the emoji
+- Use **bold** for all tickers, companies, numbers, and metrics
+- Only include sections that are relevant - omit sections if report doesn't address them
+- If no investment thesis is stated, skip that section entirely
+- If report is purely informational/news, focus on sector context
+- Be ruthlessly concise - every bullet must add unique value
+- Extract insights from visuals, don't just describe them
+
+**Tone:** Professional, data-driven, actionable. Zero fluff.
+**Length:** 400-600 words (tight but comprehensive)
 """
 
     async def health_check(self) -> bool:
