@@ -47,7 +47,7 @@ class BasePipeline(ABC):
         pass
 
     async def forward_to_target(self, text: str, file_path: Optional[str] = None,
-                                 parse_mode: str = 'Markdown') -> bool:
+                                 parse_mode: str = 'Markdown', target_channel: Optional[str] = None) -> bool:
         """
         Forward a processed message to the output channel.
 
@@ -55,11 +55,15 @@ class BasePipeline(ABC):
             text: The message text to send
             file_path: Optional file to attach
             parse_mode: Telegram parse mode (Markdown or HTML)
+            target_channel: Optional specific target channel (overrides default)
 
         Returns:
             bool: True if sent successfully, False otherwise
         """
         try:
+            # Use specified target or default
+            output_channel = target_channel if target_channel else self.output_channel_id
+
             # Telegram limits: 4096 chars for messages, 1024 for captions
             MAX_MESSAGE_LENGTH = 4000  # Leave margin
             MAX_CAPTION_LENGTH = 1000  # Leave margin
@@ -73,7 +77,7 @@ class BasePipeline(ABC):
                         chunks = self._split_text(text, MAX_MESSAGE_LENGTH)
                         for i, chunk in enumerate(chunks):
                             await self.client.send_message(
-                                self.output_channel_id,
+                                output_channel,
                                 chunk,
                                 parse_mode=parse_mode
                             )
@@ -81,45 +85,45 @@ class BasePipeline(ABC):
                     else:
                         # Send as single message
                         await self.client.send_message(
-                            self.output_channel_id,
+                            output_channel,
                             text,
                             parse_mode=parse_mode
                         )
 
                     # Send file with short caption
                     await self.client.send_file(
-                        self.output_channel_id,
+                        output_channel,
                         file_path,
                         caption="📎 Attached document"
                     )
-                    self.logger.info(f"Sent file to output channel")
+                    self.logger.info(f"Sent file to {output_channel}")
                 else:
                     # Send file with caption
                     await self.client.send_file(
-                        self.output_channel_id,
+                        output_channel,
                         file_path,
                         caption=text,
                         parse_mode=parse_mode
                     )
-                    self.logger.info(f"Sent message with file to output channel")
+                    self.logger.info(f"Sent message with file to {output_channel}")
             else:
                 # Text only - split if needed
                 if len(text) > MAX_MESSAGE_LENGTH:
                     chunks = self._split_text(text, MAX_MESSAGE_LENGTH)
                     for i, chunk in enumerate(chunks):
                         await self.client.send_message(
-                            self.output_channel_id,
+                            output_channel,
                             chunk,
                             parse_mode=parse_mode
                         )
-                        self.logger.info(f"Sent text chunk {i+1}/{len(chunks)}")
+                        self.logger.info(f"Sent text chunk {i+1}/{len(chunks)} to {output_channel}")
                 else:
                     await self.client.send_message(
-                        self.output_channel_id,
+                        output_channel,
                         text,
                         parse_mode=parse_mode
                     )
-                    self.logger.info(f"Sent message to output channel")
+                    self.logger.info(f"Sent message to {output_channel}")
 
             return True
 

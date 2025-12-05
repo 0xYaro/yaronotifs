@@ -377,10 +377,19 @@ from: {via_source}"""
             )
             format_time = time.time() - format_start
 
+            # Get the appropriate output channel based on source
+            from config import settings
+            # Extract source channel ID from metadata
+            source_channel_id = source_msg.metadata.get('chat_id') if source_msg.metadata else None
+            target_channel = settings.get_output_channel(source_channel_id) if source_channel_id else None
+
             # Forward to target
             forward_start = time.time()
-            result = await self.forward_to_target(formatted_message)
+            result = await self.forward_to_target(formatted_message, target_channel=target_channel)
             forward_time = time.time() - forward_start
+
+            if target_channel:
+                self.logger.info(f"📤 Routed to {target_channel} based on source {source_msg.source_name}")
 
             total_time = time.time() - start_time
             self.logger.info(f"⏱️ [TIMING] Text processing complete: LLM={llm_time:.2f}s, Format={format_time:.2f}s, Forward={forward_time:.2f}s, Total={total_time:.2f}s")
@@ -439,11 +448,20 @@ from: {via_source}"""
                 content_type="document"
             )
 
+            # Get the appropriate output channel based on source
+            from config import settings
+            source_channel_id = source_msg.metadata.get('chat_id') if source_msg.metadata else None
+            target_channel = settings.get_output_channel(source_channel_id) if source_channel_id else None
+
             # Forward with document attached
             success = await self.forward_to_target(
                 text=formatted_message,
-                file_path=str(source_msg.document_path)
+                file_path=str(source_msg.document_path),
+                target_channel=target_channel
             )
+
+            if target_channel:
+                self.logger.info(f"📤 Routed document to {target_channel} based on source {source_msg.source_name}")
 
             return success
 

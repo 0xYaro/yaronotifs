@@ -27,8 +27,12 @@ class Settings:
         self.SESSION_NAME = os.getenv('SESSION_NAME', 'yaronotifs_session')
 
         # Output Destinations
-        # OUTPUT_CHANNEL_ID: Where processed intelligence is posted (channel ID, format: -100...)
+        # OUTPUT_CHANNEL_ID: Default/fallback output channel (kept for backward compatibility)
         self.OUTPUT_CHANNEL_ID = os.getenv('OUTPUT_CHANNEL_ID', '')
+
+        # Smart Channel Routing: Route messages to different output channels based on source
+        self.CRYPTO_OUTPUT_CHANNEL = os.getenv('CRYPTO_OUTPUT_CHANNEL', '@cryptonotifs')
+        self.EQUITIES_OUTPUT_CHANNEL = os.getenv('EQUITIES_OUTPUT_CHANNEL', '@equitiesnotifs')
 
         # STATUS_DESTINATION_ID: Optional - where bot metrics/status reports are sent
         # Can be a user ID or channel ID. Leave empty to disable status reports.
@@ -50,6 +54,16 @@ class Settings:
             -1001750561680,    # DTpapers (Equity research PDFs)
             -1003309883285,    # Yaro Notifs [Test Channel]
         ]
+
+        # Channel Routing Map: Maps source channel IDs to output channels
+        # This enables smart routing where crypto news goes to crypto channel
+        # and equity research goes to equities channel
+        self.CHANNEL_ROUTING: Dict[int, str] = {
+            -1001279597711: self.CRYPTO_OUTPUT_CHANNEL,    # BWEnews → Crypto
+            -1001526765830: self.CRYPTO_OUTPUT_CHANNEL,    # Foresight News → Crypto
+            -1001750561680: self.EQUITIES_OUTPUT_CHANNEL,  # DTpapers → Equities
+            -1003309883285: self.CRYPTO_OUTPUT_CHANNEL,    # Test Channel → Crypto (for testing)
+        }
 
         # Retry Configuration
         self.MAX_RETRIES = 3
@@ -100,6 +114,22 @@ class Settings:
             bool: True if channel is monitored, False otherwise
         """
         return channel_id in self.MONITORED_CHANNELS
+
+    def get_output_channel(self, source_channel_id: int) -> str:
+        """
+        Get the appropriate output channel for a given source channel.
+
+        Uses smart routing to direct crypto news to crypto channel
+        and equity research to equities channel.
+
+        Args:
+            source_channel_id: ID of the source channel
+
+        Returns:
+            str: Output channel ID/username to forward messages to
+        """
+        # Use routing map if available, otherwise fall back to default
+        return self.CHANNEL_ROUTING.get(source_channel_id, self.OUTPUT_CHANNEL_ID)
 
 
 # Global settings instance
