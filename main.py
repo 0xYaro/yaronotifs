@@ -25,16 +25,69 @@ import asyncio
 import signal
 import sys
 from pathlib import Path
+from datetime import datetime, time
+import pytz
 
 from config import settings
 from sources import SourceRegistry, TelegramSource
 from pipelines import UnifiedPipeline
-from services import StatusReporter
+from services import StatusReporter, DailySummaryService
 from utils import setup_logger, get_logger
 
 
 # Global logger
 logger = None
+
+
+async def schedule_daily_summary(daily_summary: DailySummaryService):
+    """
+    Schedule daily summary generation at 10am SGT every day.
+
+    This runs continuously and generates summaries at the scheduled time.
+
+    Args:
+        daily_summary: The DailySummaryService instance
+    """
+    # Singapore timezone
+    sgt = pytz.timezone('Asia/Singapore')
+    target_time = time(10, 0, 0)  # 10:00:00 AM SGT
+
+    logger.info(f"Daily summary scheduler started - will run at {target_time} SGT daily")
+
+    while True:
+        try:
+            # Get current time in SGT
+            now_sgt = datetime.now(sgt)
+            current_time = now_sgt.time()
+
+            # Calculate target datetime for today
+            target_datetime = datetime.combine(now_sgt.date(), target_time)
+            target_datetime = sgt.localize(target_datetime)
+
+            # If we've already passed today's target time, schedule for tomorrow
+            if now_sgt >= target_datetime:
+                target_datetime = target_datetime.replace(day=target_datetime.day + 1)
+
+            # Calculate seconds until next run
+            time_until_run = (target_datetime - now_sgt).total_seconds()
+
+            logger.info(f"Next daily summary scheduled for: {target_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logger.info(f"Time until next run: {time_until_run / 3600:.2f} hours")
+
+            # Sleep until the target time
+            await asyncio.sleep(time_until_run)
+
+            # Generate the daily summary
+            logger.info("Triggering daily summary generation...")
+            await daily_summary.generate_daily_summary()
+
+        except asyncio.CancelledError:
+            logger.info("Daily summary scheduler cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in daily summary scheduler: {e}", exc_info=True)
+            # Wait 1 hour before retrying on error
+            await asyncio.sleep(3600)
 
 
 async def health_checks() -> bool:
@@ -191,6 +244,11 @@ async def main():
     )
 
     # ========================================
+    # Initialize Daily Summary Service
+    # ========================================
+    daily_summary = DailySummaryService(client=telegram_client)
+
+    # ========================================
     # Define Message Handler
     # ========================================
     async def process_message(source_message):
@@ -264,11 +322,19 @@ async def main():
             registry.process_messages(process_message)
         )
 
+        # Start daily summary scheduler
+        summary_task = asyncio.create_task(
+            schedule_daily_summary(daily_summary)
+        )
+
+        logger.info("✓ Daily summary scheduler started")
+
         # Wait for shutdown signal
         await shutdown_event.wait()
 
-        # Cancel processing
+        # Cancel processing and summary tasks
         processing_task.cancel()
+        summary_task.cancel()
 
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
