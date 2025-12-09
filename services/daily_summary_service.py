@@ -203,24 +203,30 @@ class DailySummaryService:
             List of Telegram messages
         """
         try:
-            # Calculate the cutoff time
+            # Calculate the cutoff time (24 hours ago)
             cutoff_time = datetime.now() - timedelta(hours=hours)
 
             messages = []
 
-            # Iterate through messages in the channel
-            # limit=None means retrieve all messages until we hit the cutoff
-            async for message in self.client.iter_messages(
-                channel,
-                offset_date=cutoff_time,
-                reverse=False  # Get newest first
-            ):
+            # Iterate through messages in the channel starting from newest
+            # We iterate from newest to oldest and stop when we hit messages older than cutoff
+            async for message in self.client.iter_messages(channel):
+                # Check if message is within our time window
+                # message.date is timezone-aware (UTC), so we compare properly
+                message_time = message.date.replace(tzinfo=None)
+
+                # Stop if we've gone past our cutoff time
+                if message_time < cutoff_time:
+                    break
+
                 # Only include messages with text content
                 if message.text:
                     messages.append(message)
 
             # Sort messages chronologically (oldest first)
             messages.sort(key=lambda m: m.date)
+
+            logger.info(f"Retrieved {len(messages)} messages from past {hours} hours")
 
             return messages
 
